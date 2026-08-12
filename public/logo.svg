@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 180" role="img" aria-labelledby="t d">
+<title id="t">Vermalio</title><desc id="d">Vermalio AI-Powered Intelligent Solutions</desc>
+<defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="#f4c86a"/><stop offset="1" stop-color="#b77a17"/></linearGradient><linearGradient id="s" x1="0" x2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#aeb6c2"/></linearGradient></defs>
+<rect width="760" height="180" fill="none"/>
+<g transform="translate(8 18)"><path d="M20 18 L72 18 L112 112 L92 142 Z" fill="url(#g)"/><path d="M136 18 L102 94 L90 68 L112 18 Z" fill="url(#s)"/>
+<path d="M111 22v24h19" stroke="#d7a12c" stroke-width="4" fill="none"/><path d="M111 46v24h29" stroke="#d7a12c" stroke-width="4" fill="none"/><path d="M111 70v24h19" stroke="#d7a12c" stroke-width="4" fill="none"/>
+<circle cx="132" cy="46" r="5" fill="#d7a12c"/><circle cx="142" cy="70" r="5" fill="#d7a12c"/><circle cx="132" cy="94" r="5" fill="#d7a12c"/></g>
+<text x="180" y="78" fill="#f7f9fc" font-family="Arial,Helvetica,sans-serif" font-size="58" letter-spacing="10">VERMALIO</text>
+<text x="183" y="116" fill="#d7a12c" font-family="Arial,Helvetica,sans-serif" font-size="18" letter-spacing="4">AI-POWERED INTELLIGENT SOLUTIONS</text>
+</svg>
