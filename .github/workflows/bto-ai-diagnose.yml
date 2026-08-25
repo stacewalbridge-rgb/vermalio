@@ -1,0 +1,37 @@
+name: Diagnose Built To Offend AI
+
+on:
+  push:
+    branches: [built-to-offend-deploy]
+    paths:
+      - ".github/workflows/bto-ai-diagnose.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack and inspect AI path
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .diag && mkdir .diag
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 | base64 -d > .diag/bto.tar.xz
+          tar -xJf .diag/bto.tar.xz -C .diag
+          cd .diag/built-to-offend-production
+          echo '===== WRANGLER ====='
+          cat wrangler.jsonc
+          echo '===== AI REFERENCES ====='
+          grep -n -E 'MODEL|env\.AI|AI\.run|api/generate|generateCards|versions|qwen|llama|workers-ai' src/index.js || true
+          echo '===== INDEX AI SECTION ====='
+          nl -ba src/index.js | sed -n '1,180p'
+          echo '===== LIVE GENERATE RESPONSE ====='
+          curl -sS --max-time 45 -D /tmp/gen.h -o /tmp/gen.b -X POST -H 'content-type: application/json' \
+            --data '{"recipient":"Diagnostic","occasion":"Birthday","relationship":"Friend","tone":"playful","ammo":"always late","quote":"","avoid":"","brutality":4,"art":"monster"}' \
+            https://builttooffend.com/api/generate || true
+          cat /tmp/gen.h || true
+          cat /tmp/gen.b || true
