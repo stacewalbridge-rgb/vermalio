@@ -1,0 +1,161 @@
+name: Deploy BTO AI Final
+
+on:
+  push:
+    branches: [built-to-offend-deploy]
+    paths:
+      - ".github/workflows/deploy-bto-ai-final.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-latest
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      BTO_DIR: ${{ github.workspace }}/.deploy/built-to-offend-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Authenticate to Cloudflare
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          export NO_COLOR=1 FORCE_COLOR=0
+          rm -f /tmp/cloudflare-device-login.log
+          set +e
+          (npx wrangler login --device --browser=false >/tmp/cloudflare-device-login.log 2>&1) &
+          login_pid=$!
+          set -e
+          for poll in $(seq 1 45); do
+            if grep -q 'enter the code' /tmp/cloudflare-device-login.log 2>/dev/null; then break; fi
+            sleep 1
+          done
+          grep -q 'enter the code' /tmp/cloudflare-device-login.log
+          printf '\nDeployment run: %s\n\n' "$RUN_URL" >>/tmp/cloudflare-device-login.log
+          gh issue create --title "Cloudflare approval required — BTO AI FINAL — run ${{ github.run_number }}" --body-file /tmp/cloudflare-device-login.log || true
+          set +e
+          wait "$login_pid"
+          rc=$?
+          set -e
+          cat /tmp/cloudflare-device-login.log || true
+          test "$rc" = 0
+          npx wrangler whoami
+
+      - name: Build final production Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check .github/bto-ai-transform.js
+          rm -rf .deploy && mkdir -p .deploy
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 | base64 -d > .deploy/built-to-offend.tar.xz
+          tar -xJf .deploy/built-to-offend.tar.xz -C .deploy
+          cp built-to-offend/deploy/0002_secure_tokens.sql "$BTO_DIR/migrations/0002_secure_tokens.sql"
+          cd "$BTO_DIR"
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          node "$GITHUB_WORKSPACE/.github/bto-ai-transform.js"
+          node "$GITHUB_WORKSPACE/.github/bto-seo-build.js"
+          npm install --no-audit --no-fund
+          node --check src/index.js
+          node --check public/app.js
+          grep -q '@cf/meta/llama-3.3-70b-instruct-fp8-fast' src/index.js
+          grep -q 'type: "json_schema"' src/index.js
+
+      - name: Rebind existing production resources
+        working-directory: .deploy/built-to-offend-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler kv namespace list >/tmp/bto-kv-list.json
+          npx wrangler d1 list --json >/tmp/bto-d1-list.json
+          node <<'NODE'
+          const fs=require('fs');
+          const kv=JSON.parse(fs.readFileSync('/tmp/bto-kv-list.json','utf8'));
+          const hit=kv.find(x=>x.title==='BTO_PRIVATE_ASSETS'||x.title==='built-to-offend-private-assets'||String(x.title||'').endsWith('-BTO_PRIVATE_ASSETS'));
+          if(!hit?.id) throw new Error('BTO_PRIVATE_ASSETS KV namespace missing');
+          const d1=JSON.parse(fs.readFileSync('/tmp/bto-d1-list.json','utf8'));
+          const db=d1.find(x=>x.name==='built-to-offend-db');
+          const dbid=db?.uuid||db?.id||db?.database_id;
+          if(!dbid) throw new Error('built-to-offend-db missing');
+          const p='wrangler.jsonc';
+          const cfg=JSON.parse(fs.readFileSync(p,'utf8'));
+          delete cfg.r2_buckets;
+          cfg.kv_namespaces=[{binding:'ASSET_BUCKET',id:hit.id}];
+          cfg.d1_databases=[{binding:'DB',database_name:'built-to-offend-db',database_id:dbid}];
+          cfg.vars={...(cfg.vars||{}),PUBLIC_BASE_URL:'https://builttooffend.com',CARD_PRICE_PENCE:'499',UK_SHIPPING_PENCE:'199',PHOTO_ADDON_PENCE:'100',STRIPE_STANDARD_PAYMENT_LINK:'https://buy.stripe.com/14A4gA3IEfWa3O7a5J8so02',STRIPE_PHOTO_PAYMENT_LINK:'https://buy.stripe.com/00w8wQ92YcJY4Sb1zd8so03',PRINT_PROVIDER:'prodigi',PRODIGI_ENV:'live',PRODIGI_SKU:'GLOBAL-GRE-MOH-7X5-DIR',PRODIGI_SHIPPING_METHOD:'Budget',PRODIGI_PROXY_URL:'https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi'};
+          fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\n');
+          NODE
+          token_len=$(npx wrangler d1 execute DB --remote --config wrangler.jsonc --json --command "SELECT length(value) AS n FROM internal_config WHERE key='prodigi_proxy_token'" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);const rows=j?.[0]?.results||j?.result?.[0]?.results||[];process.stdout.write(String(rows?.[0]?.n||0));})')
+          echo "Prodigi proxy token length: $token_len"
+          test "$token_len" -ge 32
+
+      - name: Deploy Built To Offend
+        working-directory: .deploy/built-to-offend-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --dry-run --config wrangler.jsonc
+          npx wrangler deploy --config wrangler.jsonc
+
+      - name: Full live acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=https://builttooffend.com
+
+          echo '== DOMAINS =='
+          for host in builttooffend.com www.builttooffend.com builttooffend.co.uk www.builttooffend.co.uk; do
+            code=$(curl -LsS --max-time 20 -o /tmp/h.json -w '%{http_code}' "https://$host/api/health?verify=$(date +%s)")
+            echo "$host -> HTTP $code $(cat /tmp/h.json)"
+            test "$code" = 200
+            node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/h.json","utf8"));if(j.ok!==true)process.exit(1)'
+          done
+
+          echo '== CONFIG =='
+          config=$(curl -fsS --max-time 20 -H 'Cache-Control: no-cache' "$base/api/config?verify=$(date +%s)")
+          echo "$config"
+          CONFIG="$config" node -e 'const c=JSON.parse(process.env.CONFIG||"{}");if(c.checkoutReady!==true||c.printer!=="prodigi"||c.worldwideReady!==true||c.cardPricePence!==499||c.photoAddOnPence!==100||c.ukShippingPence!==199||c.currency!=="gbp")process.exit(1)'
+
+          echo '== AI =='
+          generated=$(curl -fsS --max-time 90 -X POST -H 'content-type: application/json' --data '{"recipient":"Acceptance Test","occasion":"Birthday","relationship":"Friend","tone":"playful","ammo":"always late","quote":"","avoid":"","brutality":4,"art":"monster"}' "$base/api/generate")
+          echo "$generated"
+          GENERATED="$generated" node -e 'const j=JSON.parse(process.env.GENERATED||"{}");if(!Array.isArray(j.versions)||j.versions.length<3||j.versions.slice(0,3).some(v=>!v.front||!v.inside))process.exit(1)'
+
+          echo '== ORDER SECURITY + ASSETS =='
+          order=$(curl -fsS --max-time 60 -X POST -H 'content-type: application/json' --data '{"recipient":"BTO-FINAL-VERIFY","occasion":"Birthday","brutality":4,"label":"VERIFY","front":"BTO FINAL VERIFY","inside":"Automated verification draft. Never fulfil this order.","art":"monster"}' "$base/api/orders")
+          echo "$order"
+          order_id=$(ORDER="$order" node -e 'const j=JSON.parse(process.env.ORDER);process.stdout.write(j.orderId||"")')
+          token=$(ORDER="$order" node -e 'const j=JSON.parse(process.env.ORDER);process.stdout.write(j.uploadToken||"")')
+          test -n "$order_id"; test -n "$token"
+          printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z3ioAAAAASUVORK5CYII=' | base64 -d >/tmp/a.png
+          bad=$(curl -sS --max-time 20 -o /tmp/bad.json -w '%{http_code}' -X PUT -H 'content-type: image/png' -H 'x-order-token: wrong-token' --data-binary @/tmp/a.png "$base/api/order-asset?order_id=$order_id&kind=outside")
+          echo "wrong token -> $bad $(cat /tmp/bad.json)"
+          test "$bad" = 403
+          for kind in outside inside; do
+            code=$(curl -sS --max-time 30 -o /tmp/u.json -w '%{http_code}' -X PUT -H 'content-type: image/png' -H "x-order-token: $token" --data-binary @/tmp/a.png "$base/api/order-asset?order_id=$order_id&kind=$kind")
+            echo "$kind -> $code $(cat /tmp/u.json)"
+            test "$code" = 200
+          done
+
+          echo '== STRIPE HANDOFF =='
+          code=$(curl -sS --max-time 30 -o /tmp/checkout.json -w '%{http_code}' -X POST -H 'content-type: application/json' --data "{\"orderId\":\"$order_id\",\"uploadToken\":\"$token\"}" "$base/api/checkout")
+          echo "checkout -> $code $(cat /tmp/checkout.json)"
+          test "$code" = 200
+          ORDER_ID="$order_id" node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/checkout.json","utf8"));const u=new URL(j.checkoutUrl);if(u.hostname!=="buy.stripe.com"||u.searchParams.get("client_reference_id")!==process.env.ORDER_ID)process.exit(1)'
+
+          echo '== PRODIGI RECEIVER =='
+          code=$(curl -sS --max-time 20 -o /tmp/pw.json -w '%{http_code}' https://vermalio.stace-walbridge.workers.dev/api/prodigi/webhook/health)
+          echo "webhook -> $code $(cat /tmp/pw.json)"
+          test "$code" = 200
+          node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/pw.json","utf8"));if(j.ok!==true)process.exit(1)'
+
+          echo 'COMPLETE: BTO AI, order storage, secure assets, Stripe checkout and Prodigi receiver all passed.'
