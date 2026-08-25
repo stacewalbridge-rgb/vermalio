@@ -1,0 +1,32 @@
+name: Inspect Built To Offend bundle
+
+on:
+  push:
+    branches: [built-to-offend-deploy]
+    paths:
+      - ".github/workflows/inspect-bto-bundle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack production build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .inspect
+          mkdir -p .inspect
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 \
+            | base64 -d > .inspect/built-to-offend.tar.xz
+          tar -xJf .inspect/built-to-offend.tar.xz -C .inspect
+      - name: Upload unpacked production source
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-to-offend-unpacked
+          path: .inspect/built-to-offend-production
+          retention-days: 1
