@@ -14,22 +14,15 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Inspect deployed status route and query paid order
+      - name: Query live paid order status
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf .inspect && mkdir -p .inspect
-          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 | base64 -d > .inspect/bto.tar.xz
-          tar -xJf .inspect/bto.tar.xz -C .inspect
-          cd .inspect/built-to-offend-production
-          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
-          node "$GITHUB_WORKSPACE/.github/bto-ai-transform.js"
-          echo '=== order-success.html API/status references ==='
-          grep -nE 'fetch\(|/api/|fulfil|fulfill|retry|status|session_id' public/order-success.html || true
-          echo '=== Worker route/status references ==='
-          grep -nE 'order-status|session-status|checkout-status|fulfilment_retry|fulfilled|submitted|provider_order|providerOrder|/api/' src/index.js | tail -n 220 || true
-          echo '=== Live payment session page ==='
-          curl -LsS --max-time 20 -D /tmp/headers.txt -o /tmp/page.html 'https://builttooffend.com/order-success.html?session_id=cs_live_b1zrLDcYL5SfGlCc05WHqarTJtYV7b8U70LdwD9zKsaQ2q6Hjui4PKlslS'
-          head -n 20 /tmp/headers.txt
-          grep -nE 'PAID|retry|PRINT|ORDER|fulfil|fulfilled|submitted|status' /tmp/page.html | head -n 80 || true
+          url='https://builttooffend.com/api/order-status?session_id=cs_live_b1zrLDcYL5SfGlCc05WHqarTJtYV7b8U70LdwD9zKsaQ2q6Hjui4PKlslS'
+          for n in 1 2 3; do
+            echo "=== STATUS CHECK $n ==="
+            code=$(curl -sS --max-time 20 -o /tmp/status.json -w '%{http_code}' "$url")
+            echo "HTTP $code: $(cat /tmp/status.json)"
+            test "$code" = 200
+            sleep 3
+          done
