@@ -45,7 +45,7 @@ jobs:
           echo "handoff_issue=$issue_number" >> "$GITHUB_OUTPUT"
           cipher=""
           for attempt in $(seq 1 180); do
-            cipher=$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue_number/comments" --jq '.[].body' 2>/dev/null | sed -n 's/^PRODIGI_SECRET_CIPHERTEXT_B64://p' | tr -d '\r\n[:space:]' | tail -1 || true)
+            cipher=$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue_number/comments" --jq '.[].body' 2>/dev/null | sed -n 's/^PRODIGI_SECRET_CIPHERTEXT_B64://p' | tr -d '\r\n\t ' | tail -1 || true)
             if [ -n "$cipher" ]; then break; fi
             sleep 2
           done
