@@ -1,99 +1,16 @@
 name: BTO One-Time Cloudflare Fix
 
 on:
-  push:
-    branches: [bto-prodigi-final-fix]
-    paths:
-      - ".github/workflows/bto-one-time-cloudflare-fix.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
-  fix:
+  disabled:
     runs-on: ubuntu-latest
-    env:
-      WRANGLER_SEND_METRICS: "false"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Authorize Cloudflare once for the live hotfix
-        id: auth
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Interactive Cloudflare authorisation disabled
         run: |
-          set -euo pipefail
-          export NO_COLOR=1 FORCE_COLOR=0
-          rm -f /tmp/cf-login.log
-          set +e
-          (npx wrangler login --device --browser=false >/tmp/cf-login.log 2>&1) &
-          pid=$!
-          set -e
-          for i in $(seq 1 60); do
-            if grep -q 'enter the code' /tmp/cf-login.log 2>/dev/null; then break; fi
-            sleep 1
-          done
-          grep -q 'enter the code' /tmp/cf-login.log
-          issue_url=$(gh issue create --title "ONE Cloudflare approval — deploy Built To Offend print fix" --body-file /tmp/cf-login.log)
-          issue_number=${issue_url##*/}
-          echo "issue_number=$issue_number" >> "$GITHUB_OUTPUT"
-          set +e
-          wait "$pid"
-          rc=$?
-          set -e
-          if [ "$rc" != 0 ]; then
-            cat /tmp/cf-login.log
-            exit "$rc"
-          fi
-          npx wrangler whoami
-
-      - name: Deploy fixed Vermalio Prodigi bridge
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf /tmp/vermalio-main
-          git fetch --depth=1 origin main:refs/remotes/origin/main
-          git worktree add --detach /tmp/vermalio-main origin/main
-          cd /tmp/vermalio-main
-          npm install --no-audit --no-fund
-          node --check src/worker.js
-          node --check src/bto-prodigi-spread-bridge.js
-          grep -q 'redirect: "manual"' src/bto-prodigi-spread-bridge.js
-          ! grep -q 'redirect: "error"' src/bto-prodigi-spread-bridge.js
-          npx wrangler deploy --dry-run --config wrangler.jsonc
-          npx wrangler deploy --config wrangler.jsonc
-
-      - name: Verify live paid-order recovery reaches Prodigi
-        shell: bash
-        run: |
-          set -euo pipefail
-          latest='cs_live_b1rgDhu7xOdgT9iua3ByL6javML7mWpgc1Im5DFWGkGVGoIYheCiYgmAHb'
-          for i in $(seq 1 36); do
-            a=$(curl -sS --max-time 30 "https://builttooffend.com/api/order-status?session_id=$latest" || true)
-            p=$(curl -sS --max-time 30 'https://vermalio.stace-walbridge.workers.dev/api/prodigi/provider-stats' || true)
-            echo "$a"
-            echo "$p"
-            if A="$a" P="$p" node -e 'const a=JSON.parse(process.env.A||"{}"); const p=JSON.parse(process.env.P||"{}"); process.exit(a.status==="submitted"&&a.printerOrderId&&Number(p.orderCount)>0?0:1)' 2>/dev/null; then
-              exit 0
-            fi
-            sleep 5
-          done
-          exit 1
-
-      - name: Mark approval issue complete
-        if: always() && steps.auth.outputs.issue_number != ''
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ steps.auth.outputs.issue_number }}
-        run: |
-          set -euo pipefail
-          if [ "${{ job.status }}" = "success" ]; then
-            gh issue close "$ISSUE" --comment 'Cloudflare authorization completed. The fixed Vermalio -> Prodigi bridge was deployed and the live paid-order recovery check passed.'
-          fi
+          echo 'Interactive Cloudflare device-code deployment is disabled by owner request.'
+          echo 'Do not request or generate further Cloudflare approval codes.'
