@@ -89,7 +89,7 @@ async function fetchSourceImage(value) {
   const response = await fetch(parsed.url.toString(), {
     method: "GET",
     headers: { accept: "image/png,image/jpeg" },
-    redirect: "error",
+    redirect: "manual",
   });
   if (!response.ok) throw new Error(`Built To Offend artwork fetch failed (${response.status})`);
   const length = Number(response.headers.get("content-length") || "0");
