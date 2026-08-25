@@ -1,0 +1,37 @@
+name: Promote BTO Prodigi Final
+
+on:
+  push:
+    branches: [bto-source-inspect]
+    paths:
+      - ".github/workflows/promote-bto-prodigi-final.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Promote tested Prodigi patch and final deploy workflow atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s _inspect/prodigi-single-asset.patch
+          test -s .github/workflows/deploy-built-to-offend.yml
+          git fetch origin built-to-offend-deploy
+          rm -rf /tmp/bto-prod
+          git worktree add /tmp/bto-prod origin/built-to-offend-deploy
+          cp _inspect/prodigi-single-asset.patch /tmp/bto-prod/built-to-offend/deploy/prodigi-single-asset.patch
+          cp .github/workflows/deploy-built-to-offend.yml /tmp/bto-prod/.github/workflows/deploy-built-to-offend.yml
+          cd /tmp/bto-prod
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add built-to-offend/deploy/prodigi-single-asset.patch .github/workflows/deploy-built-to-offend.yml
+          git diff --cached --check
+          git commit -m "Activate direct Prodigi fulfilment for Built To Offend"
+          git push origin HEAD:built-to-offend-deploy
