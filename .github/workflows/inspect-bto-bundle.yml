@@ -24,41 +24,39 @@ jobs:
           cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 \
             | base64 -d > .inspect/built-to-offend.tar.xz
           tar -xJf .inspect/built-to-offend.tar.xz -C .inspect
-      - name: Inspect basket and API code
+      - name: Probe live basket and frontend
         shell: bash
         run: |
-          set -euo pipefail
-          cd .inspect/built-to-offend-production
-          echo '===== FILES ====='
-          find public src -maxdepth 2 -type f -print | sort
-          echo '===== APP.JS BASKET/FETCH MATCHES ====='
-          grep -n -E 'api/orders|api/order-asset|api/checkout|basket|ORDER THIS ONE|fetch\\(' public/app.js || true
-          echo '===== INDEX.JS API MATCHES ====='
-          grep -n -E 'api/orders|redirectHostIfNeeded|ASSETS|fetch\\(' src/index.js || true
-          echo '===== APP.JS ====='
-          cat public/app.js
+          set +e
+          echo '===== LIVE CONFIG ====='
+          curl -sS --max-time 20 -D - https://builttooffend.com/api/config
+          echo
+          echo '===== LIVE /api/orders PREFLIGHT ====='
+          curl -sS --max-time 20 -D - -o /dev/null -X OPTIONS \
+            -H 'Origin: https://builttooffend.com' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type' \
+            https://builttooffend.com/api/orders
+          echo
+          echo '===== LIVE /api/orders POST ====='
+          curl -sS --max-time 30 -D - -X POST \
+            -H 'Origin: https://builttooffend.com' \
+            -H 'Content-Type: application/json' \
+            --data '{"recipient":"BTO-SMOKE-TEST","occasion":"Birthday","brutality":5,"label":"SMOKE TEST","front":"BTO API SMOKE TEST","inside":"This is an automated Built To Offend API smoke test draft. It must never be fulfilled.","art":"monster"}' \
+            https://builttooffend.com/api/orders
+          echo
+          echo '===== LIVE INDEX SCRIPT REFERENCES ====='
+          curl -fsS --max-time 20 https://builttooffend.com/ | grep -n -E 'app\\.js|cart|basket|ORDER THIS ONE' | head -100 || true
+          echo
+          echo '===== LIVE APP.JS ====='
+          curl -fsS --max-time 20 https://builttooffend.com/app.js || true
       - name: Check public domains
         shell: bash
         run: |
           set +e
-          report=.inspect/domain-check.txt
-          : > "$report"
           for host in builttooffend.com www.builttooffend.com builttooffend.co.uk www.builttooffend.co.uk; do
-            echo "===== $host =====" >> "$report"
-            getent ahosts "$host" >> "$report" 2>&1
-            echo "--- HEAD ---" >> "$report"
-            curl -sSIL --max-time 20 "https://$host/" >> "$report" 2>&1
-            echo "--- HEALTH ---" >> "$report"
-            curl -sS --max-time 20 -D - "https://$host/api/health" >> "$report" 2>&1
-            echo >> "$report"
+            echo "===== $host ====="
+            curl -sSIL --max-time 20 "https://$host/" | head -20
+            curl -sS --max-time 20 -D - "https://$host/api/health" | head -30
           done
-          cat "$report"
           exit 0
-      - name: Upload unpacked production source and domain check
-        uses: actions/upload-artifact@v4
-        with:
-          name: built-to-offend-inspection
-          path: |
-            .inspect/built-to-offend-production
-            .inspect/domain-check.txt
-          retention-days: 1
