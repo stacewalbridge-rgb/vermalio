@@ -111,15 +111,37 @@ function extractPrintAreas(productPayload) {
   return candidates;
 }
 
-function printAreas(productPayload) {
+function printLayout(productPayload) {
   const areas = extractPrintAreas(productPayload);
+  if (!areas.length) throw new Error("Configured greeting-card SKU exposes no print areas");
+
+  // Prodigi's current GLOBAL-GRE direct-mail cards expose one `default`
+  // print area. For these variants the front/back/inside artwork is supplied
+  // as one print-ready sheet. Older/other variants can expose named areas.
+  if (areas.length === 1 || (areas.includes("default") && !areas.some((x) => /inside|inner|interior/i.test(x)))) {
+    const defaultArea = areas.includes("default") ? "default" : areas[0];
+    return { mode: "single-sheet", areas, defaultArea };
+  }
+
   const outsideArea = areas.find((x) => /^(front|cover|outside)$/i.test(x)) ||
-    areas.find((x) => /front|cover|outside|default/i.test(x)) || areas[0];
+    areas.find((x) => /front|cover|outside/i.test(x)) || areas[0];
   const insideArea = areas.find((x) => /inside|inner|interior/i.test(x));
   if (!outsideArea || !insideArea || outsideArea === insideArea) {
-    throw new Error(`Configured greeting-card SKU does not expose distinct outside and inside print areas (${areas.join(", ") || "none"})`);
+    throw new Error(`Could not map Prodigi greeting-card print areas (${areas.join(", ")})`);
   }
-  return { areas, outsideArea, insideArea };
+  return { mode: "multi-area", areas, outsideArea, insideArea };
+}
+
+function printAreaSizes(productPayload) {
+  const found = [];
+  const walk = (value) => {
+    if (!value || typeof value !== "object") return;
+    if (value.printAreaSizes && typeof value.printAreaSizes === "object") found.push(value.printAreaSizes);
+    if (Array.isArray(value)) value.forEach(walk);
+    else Object.values(value).forEach(walk);
+  };
+  walk(productPayload);
+  return found.slice(0, 8);
 }
 
 function validAssetUrl(value) {
@@ -178,8 +200,15 @@ export async function handleBtoProdigiProxy(request, env, url) {
     try {
       const sku = url.searchParams.get("sku") || DEFAULT_SKU;
       const product = await productDetails(apiKey, sku, environment);
-      const { areas, outsideArea, insideArea } = printAreas(product);
-      return json({ ok: true, environment, sku, areas, outsideArea, insideArea });
+      const layout = printLayout(product);
+      return json({
+        ok: true,
+        environment,
+        sku,
+        layout,
+        productDimensions: product?.productDimensions || null,
+        printAreaSizes: printAreaSizes(product),
+      });
     } catch (error) {
       return json({ ok: false, environment, error: String(error?.message || error) }, 503);
     }
@@ -196,14 +225,21 @@ export async function handleBtoProdigiProxy(request, env, url) {
     const sku = String(body?.sku || DEFAULT_SKU).trim();
     const order = body?.order || {};
     if (!order.id) throw new Error("Missing merchant order reference");
-    if (!validAssetUrl(body?.outsideUrl) || !validAssetUrl(body?.insideUrl)) {
-      throw new Error("Invalid Built To Offend print artwork URL");
-    }
+    if (!validAssetUrl(body?.outsideUrl)) throw new Error("Invalid Built To Offend print artwork URL");
 
     const product = await productDetails(apiKey, sku, environment);
-    const { outsideArea, insideArea } = printAreas(product);
+    const layout = printLayout(product);
+    if (layout.mode === "multi-area" && !validAssetUrl(body?.insideUrl)) {
+      throw new Error("Inside artwork URL is required for this Prodigi card variant");
+    }
     const recipient = recipientFrom(order);
     const totalPence = Number(order.pricePence || 0) + Number(order.shippingPence || 0);
+    const assets = layout.mode === "single-sheet"
+      ? [{ printArea: layout.defaultArea, url: body.outsideUrl }]
+      : [
+          { printArea: layout.outsideArea, url: body.outsideUrl },
+          { printArea: layout.insideArea, url: body.insideUrl },
+        ];
 
     const payload = {
       merchantReference: String(order.id),
@@ -220,15 +256,13 @@ export async function handleBtoProdigiProxy(request, env, url) {
           amount: (Math.max(0, totalPence) / 100).toFixed(2),
           currency: "GBP",
         },
-        assets: [
-          { printArea: outsideArea, url: body.outsideUrl },
-          { printArea: insideArea, url: body.insideUrl },
-        ],
+        assets,
       }],
       metadata: {
         source: "builttooffend.com",
         environment,
         brutality: String(order.brutality || ""),
+        artworkLayout: layout.mode,
       },
     };
 
@@ -252,6 +286,7 @@ export async function handleBtoProdigiProxy(request, env, url) {
       environment,
       providerOrderId: verified.providerOrderId,
       outcome: verified.outcome,
+      artworkLayout: layout.mode,
     });
   } catch (error) {
     console.error("Built To Offend Prodigi proxy error", String(error?.message || error));
