@@ -1,0 +1,38 @@
+name: Materialize Built To Offend runtime source
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/materialize-bto-runtime.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract runtime source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/bto-runtime
+          mkdir -p /tmp/bto-runtime
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 | base64 -d > /tmp/bto.tar.xz
+          tar -xJf /tmp/bto.tar.xz -C /tmp/bto-runtime
+          cd /tmp/bto-runtime/built-to-offend-production
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          node "$GITHUB_WORKSPACE/.github/bto-prodigi-spread-fix.js"
+          node --check src/index.js
+          rm -rf .git node_modules
+          git init -b bto-runtime-source
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add -A
+          git commit -m "Materialize Built To Offend runtime source"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin bto-runtime-source
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
