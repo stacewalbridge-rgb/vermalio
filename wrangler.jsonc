@@ -15,6 +15,13 @@
       "id": "4935699f8f314459950e7e2c8c16fa77"
     }
   ],
+  "d1_databases": [
+    {
+      "binding": "BTO_DB",
+      "database_name": "built-to-offend-db",
+      "database_id": "8785a79e-4386-4cfe-bda9-7823632d5b2f"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {
@@ -28,6 +35,9 @@
       "type": "durable-object",
       "storage": "sqlite"
     }
+  },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
   },
   "observability": {
     "enabled": true,
