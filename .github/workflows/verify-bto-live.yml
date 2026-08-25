@@ -39,7 +39,7 @@ jobs:
           GENERATED="$generated" node -e 'const j=JSON.parse(process.env.GENERATED||"{}");if(!Array.isArray(j.versions)||j.versions.length<3||j.versions.slice(0,3).some(v=>!v.front||!v.inside))process.exit(1)'
 
           echo '== ORDER + SECURITY =='
-          order_code=$(curl -sS --max-time 30 -o /tmp/order.json -w '%{http_code}' -X POST -H 'content-type: application/json' --data '{"recipient":"BTO-VERIFY","occasion":"Birthday","brutality":4,"label":"VERIFY","front":"BTO VERIFY TEST","inside":"Automated draft only. Never fulfil this order.","art":"monster"}' "$base/api/orders")
+          order_code=$(curl -sS --max-time 30 -o /tmp/order.json -w '%{http_code}' -X POST -H 'content-type: application/json' --data '{"recipient":"Acceptance Test","occasion":"Birthday","brutality":4,"label":"THE SAVAGE","front":"Happy Birthday, Test!","inside":"Happy birthday! Hope you have a brilliant day.","art":"monster"}' "$base/api/orders")
           order=$(cat /tmp/order.json)
           echo "order HTTP $order_code: $order"
           test "$order_code" = 200
