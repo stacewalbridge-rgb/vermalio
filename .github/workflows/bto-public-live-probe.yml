@@ -14,18 +14,32 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe public live endpoints
+      - name: Wait for permanent four-panel Prodigi bridge
         shell: bash
         run: |
-          set -u
-          echo '=== Vermalio webhook health ==='
-          curl -sS -i --max-time 30 'https://vermalio.stace-walbridge.workers.dev/api/prodigi/webhook/health' || true
-          echo
-          echo '=== Vermalio permanent BTO Prodigi bridge health ==='
-          curl -sS -i --max-time 30 'https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi/health?sku=GLOBAL-GRE-MOH-7X5-DIR' || true
-          echo
-          echo '=== Built To Offend health ==='
-          curl -sS -i --max-time 30 'https://builttooffend.com/api/health' || true
-          echo
-          echo '=== Built To Offend config ==='
-          curl -sS -i --max-time 30 'https://builttooffend.com/api/config' || true
+          set -euo pipefail
+          ok=0
+          for i in $(seq 1 30); do
+            body=$(curl -fsS --max-time 30 'https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi/health?sku=GLOBAL-GRE-MOH-7X5-DIR' || true)
+            echo "$body"
+            if BODY="$body" node -e 'const j=JSON.parse(process.env.BODY||"{}"); process.exit(j.ok===true&&j.provider==="prodigi"&&j.spreadMode==="four-panel-pdf"&&j.storage==="workers-kv"?0:1)' 2>/dev/null; then
+              ok=1
+              break
+            fi
+            sleep 6
+          done
+          test "$ok" = 1
+      - name: Verify Built To Offend live readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          health=$(curl -fsS --max-time 30 'https://builttooffend.com/api/health')
+          config=$(curl -fsS --max-time 30 'https://builttooffend.com/api/config')
+          echo "$health"
+          echo "$config"
+          HEALTH="$health" CONFIG="$config" node - <<'NODE'
+          const h=JSON.parse(process.env.HEALTH||'{}');
+          const c=JSON.parse(process.env.CONFIG||'{}');
+          if(h.ok!==true) process.exit(1);
+          if(c.checkoutReady!==true||c.printer!=='prodigi') process.exit(2);
+          NODE
