@@ -1,7 +1,18 @@
 const EXPECTED_PROXY_TOKEN_HASH = "__BTO_PROXY_TOKEN_HASH__";
-const PRODIGI_BASE = "https://api.prodigi.com";
+const PRODIGI_BASES = {
+  live: "https://api.prodigi.com",
+  sandbox: "https://api.sandbox.prodigi.com",
+};
 const DEFAULT_SKU = "GLOBAL-GRE-MOH-7X5-DIR";
 const CALLBACK_URL = "https://vermalio.stace-walbridge.workers.dev/api/prodigi/webhook";
+const SHIPPING_METHODS = new Map([
+  ["budget", "Budget"],
+  ["standard", "Standard"],
+  ["standardplus", "StandardPlus"],
+  ["standard plus", "StandardPlus"],
+  ["express", "Express"],
+  ["overnight", "Overnight"],
+]);
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -26,8 +37,26 @@ function timingSafeStringEqual(a, b) {
   return diff === 0;
 }
 
-function prodigiApiKey(env) {
-  return env.PRODIGI_API_KEY || env.PRODIGI_LIVE_API_KEY || env.PRODIGI_KEY || null;
+function normalizeEnvironment(value) {
+  return String(value || "live").toLowerCase() === "sandbox" ? "sandbox" : "live";
+}
+
+function prodigiApiKey(env, environment) {
+  if (environment === "sandbox") {
+    return env.PRODIGI_SANDBOX_API_KEY || env.PRODIGI_TEST_API_KEY || null;
+  }
+  return env.PRODIGI_LIVE_API_KEY || env.PRODIGI_API_KEY || env.PRODIGI_KEY || null;
+}
+
+function prodigiBase(environment) {
+  return PRODIGI_BASES[normalizeEnvironment(environment)];
+}
+
+function shippingMethod(value) {
+  const normalized = String(value || "Budget").trim().toLowerCase();
+  const method = SHIPPING_METHODS.get(normalized);
+  if (!method) throw new Error(`Unsupported Prodigi shipping method: ${value}`);
+  return method;
 }
 
 async function authorized(request) {
@@ -44,28 +73,37 @@ async function readJson(request) {
   return request.json();
 }
 
-async function productDetails(apiKey, sku) {
-  const response = await fetch(`${PRODIGI_BASE}/v4.0/products?skus=${encodeURIComponent(sku)}`, {
+async function productDetails(apiKey, sku, environment) {
+  const base = prodigiBase(environment);
+  const response = await fetch(`${base}/v4.0/products/${encodeURIComponent(sku)}`, {
     headers: { "X-API-Key": apiKey },
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`Prodigi live product lookup failed (${response.status})`);
+  if (!response.ok || String(payload?.outcome || "").toLowerCase() !== "ok") {
+    throw new Error(`Prodigi ${environment} product lookup failed (${response.status})`);
+  }
   return payload;
 }
 
 function extractPrintAreas(productPayload) {
   const candidates = [];
   const seen = new Set();
+  const add = (name) => {
+    const value = String(name || "").trim();
+    if (value && !seen.has(value)) {
+      seen.add(value);
+      candidates.push(value);
+    }
+  };
   const walk = (value) => {
     if (!value || typeof value !== "object") return;
-    if (value.printAreaSizes && typeof value.printAreaSizes === "object") {
-      for (const name of Object.keys(value.printAreaSizes)) {
-        if (!seen.has(name)) {
-          seen.add(name);
-          candidates.push(name);
-        }
-      }
+    if (value.printAreas && typeof value.printAreas === "object" && !Array.isArray(value.printAreas)) {
+      Object.keys(value.printAreas).forEach(add);
     }
+    if (value.printAreaSizes && typeof value.printAreaSizes === "object" && !Array.isArray(value.printAreaSizes)) {
+      Object.keys(value.printAreaSizes).forEach(add);
+    }
+    if (typeof value.printArea === "string") add(value.printArea);
     if (Array.isArray(value)) value.forEach(walk);
     else Object.values(value).forEach(walk);
   };
@@ -75,10 +113,11 @@ function extractPrintAreas(productPayload) {
 
 function printAreas(productPayload) {
   const areas = extractPrintAreas(productPayload);
-  const outsideArea = areas.find((x) => /front|cover|outside|default/i.test(x)) || areas[0];
-  const insideArea = areas.find((x) => /inside|inner/i.test(x));
-  if (!outsideArea || !insideArea) {
-    throw new Error(`Configured greeting-card SKU does not expose both outside and inside print areas (${areas.join(", ") || "none"})`);
+  const outsideArea = areas.find((x) => /^(front|cover|outside)$/i.test(x)) ||
+    areas.find((x) => /front|cover|outside|default/i.test(x)) || areas[0];
+  const insideArea = areas.find((x) => /inside|inner|interior/i.test(x));
+  if (!outsideArea || !insideArea || outsideArea === insideArea) {
+    throw new Error(`Configured greeting-card SKU does not expose distinct outside and inside print areas (${areas.join(", ") || "none"})`);
   }
   return { areas, outsideArea, insideArea };
 }
@@ -104,32 +143,45 @@ function recipientFrom(order) {
     throw new Error("Paid order is missing a complete delivery address");
   }
   return {
-    name: shipping.name,
-    email: order.customerEmail || undefined,
+    name: String(shipping.name).trim(),
+    email: order.customerEmail ? String(order.customerEmail).trim() : undefined,
     address: {
-      line1: address.line1,
-      line2: address.line2 || undefined,
-      postalOrZipCode: address.postal_code,
+      line1: String(address.line1).trim(),
+      line2: address.line2 ? String(address.line2).trim() : undefined,
+      postalOrZipCode: String(address.postal_code).trim(),
       countryCode: country,
-      townOrCity: address.city,
-      stateOrCounty: address.state || undefined,
+      townOrCity: String(address.city).trim(),
+      stateOrCounty: address.state ? String(address.state).trim() : undefined,
     },
   };
 }
 
+function verifyCreatedOrder(result, responseStatus, environment) {
+  const outcome = String(result?.outcome || "").toLowerCase();
+  const allowed = new Set(["created", "onhold", "alreadyexists"]);
+  const providerOrderId = result?.order?.id || result?.id || null;
+  const issues = Array.isArray(result?.order?.status?.issues) ? result.order.status.issues : [];
+  if (!allowed.has(outcome) || !providerOrderId || issues.length) {
+    const issueText = issues.length ? `; ${issues.map((x) => x?.description || x?.code || JSON.stringify(x)).join(" | ")}` : "";
+    throw new Error(`Prodigi ${environment} order rejected (${responseStatus}): ${result?.outcome || result?.error || "unknown error"}${issueText}`);
+  }
+  return { providerOrderId, outcome: result.outcome };
+}
+
 export async function handleBtoProdigiProxy(request, env, url) {
   if (!(await authorized(request))) return json({ error: "forbidden" }, 403);
-  const apiKey = prodigiApiKey(env);
-  if (!apiKey) return json({ error: "Prodigi key is not configured on Vermalio" }, 503);
 
   if (request.method === "GET" && url.pathname.endsWith("/health")) {
+    const environment = normalizeEnvironment(url.searchParams.get("environment") || "live");
+    const apiKey = prodigiApiKey(env, environment);
+    if (!apiKey) return json({ ok: false, environment, error: `Prodigi ${environment} key is not configured on Vermalio` }, 503);
     try {
       const sku = url.searchParams.get("sku") || DEFAULT_SKU;
-      const product = await productDetails(apiKey, sku);
+      const product = await productDetails(apiKey, sku, environment);
       const { areas, outsideArea, insideArea } = printAreas(product);
-      return json({ ok: true, environment: "live", sku, areas, outsideArea, insideArea });
+      return json({ ok: true, environment, sku, areas, outsideArea, insideArea });
     } catch (error) {
-      return json({ ok: false, error: String(error?.message || error) }, 503);
+      return json({ ok: false, environment, error: String(error?.message || error) }, 503);
     }
   }
 
@@ -137,14 +189,18 @@ export async function handleBtoProdigiProxy(request, env, url) {
 
   try {
     const body = await readJson(request);
-    const sku = String(body?.sku || DEFAULT_SKU);
+    const environment = normalizeEnvironment(body?.prodigiEnv || "live");
+    const apiKey = prodigiApiKey(env, environment);
+    if (!apiKey) throw new Error(`Prodigi ${environment} key is not configured on Vermalio`);
+
+    const sku = String(body?.sku || DEFAULT_SKU).trim();
     const order = body?.order || {};
     if (!order.id) throw new Error("Missing merchant order reference");
     if (!validAssetUrl(body?.outsideUrl) || !validAssetUrl(body?.insideUrl)) {
       throw new Error("Invalid Built To Offend print artwork URL");
     }
 
-    const product = await productDetails(apiKey, sku);
+    const product = await productDetails(apiKey, sku, environment);
     const { outsideArea, insideArea } = printAreas(product);
     const recipient = recipientFrom(order);
     const totalPence = Number(order.pricePence || 0) + Number(order.shippingPence || 0);
@@ -153,7 +209,7 @@ export async function handleBtoProdigiProxy(request, env, url) {
       merchantReference: String(order.id),
       idempotencyKey: String(order.id),
       callbackUrl: CALLBACK_URL,
-      shippingMethod: String(body?.shippingMethod || "Budget"),
+      shippingMethod: shippingMethod(body?.shippingMethod || "Budget"),
       recipient,
       items: [{
         merchantReference: `monster-${order.id}`,
@@ -171,11 +227,12 @@ export async function handleBtoProdigiProxy(request, env, url) {
       }],
       metadata: {
         source: "builttooffend.com",
+        environment,
         brutality: String(order.brutality || ""),
       },
     };
 
-    const response = await fetch(`${PRODIGI_BASE}/v4.0/orders`, {
+    const response = await fetch(`${prodigiBase(environment)}/v4.0/orders`, {
       method: "POST",
       headers: {
         "X-API-Key": apiKey,
@@ -184,12 +241,18 @@ export async function handleBtoProdigiProxy(request, env, url) {
       body: JSON.stringify(payload),
     });
     const result = await response.json().catch(() => ({}));
-    const providerOrderId = result?.order?.id || result?.id || null;
-    if (!response.ok || !providerOrderId) {
-      throw new Error(`Prodigi live order failed (${response.status}): ${result?.outcome || result?.error || "unknown error"}`);
+    if (!response.ok) {
+      throw new Error(`Prodigi ${environment} order failed (${response.status}): ${result?.outcome || result?.error || "unknown error"}`);
     }
+    const verified = verifyCreatedOrder(result, response.status, environment);
 
-    return json({ ok: true, provider: "prodigi", providerOrderId });
+    return json({
+      ok: true,
+      provider: "prodigi",
+      environment,
+      providerOrderId: verified.providerOrderId,
+      outcome: verified.outcome,
+    });
   } catch (error) {
     console.error("Built To Offend Prodigi proxy error", String(error?.message || error));
     return json({ ok: false, error: String(error?.message || error) }, 502);
