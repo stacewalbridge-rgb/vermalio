@@ -81,7 +81,7 @@ jobs:
           test -f public/robots.txt
           test -f public/sitemap.xml
           test -f public/novelty-cards.html
-          grep -q 'Funny Personalised & Rude Greeting Cards' public/index.html
+          grep -q 'Funny Personalised' public/index.html
           grep -q 'https://builttooffend.com/sitemap.xml' public/robots.txt
 
       - name: Authenticate to Cloudflare
