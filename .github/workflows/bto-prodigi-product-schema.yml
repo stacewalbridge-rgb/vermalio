@@ -1,0 +1,69 @@
+name: BTO Prodigi Product Schema
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/bto-prodigi-product-schema.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Receive Prodigi key securely
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/p.pem >/dev/null 2>&1
+          openssl pkey -in /tmp/p.pem -pubout -out /tmp/pub.pem >/dev/null 2>&1
+          pub=$(base64 -w0 /tmp/pub.pem)
+          printf 'BTO_PRODIGI_PUBLIC_KEY_B64:%s\n' "$pub" >/tmp/body.txt
+          issue_url=$(gh issue create --title "BTO Prodigi schema encrypted handoff — run ${{ github.run_number }}" --body-file /tmp/body.txt)
+          n=${issue_url##*/}
+          cipher=""
+          for i in $(seq 1 180); do
+            cipher=$(gh api "repos/$GITHUB_REPOSITORY/issues/$n/comments" --jq '.[].body' 2>/dev/null | sed -n 's/^PRODIGI_SECRET_CIPHERTEXT_B64://p' | tr -d '\r\n\t ' | tail -1 || true)
+            [ -n "$cipher" ] && break
+            sleep 2
+          done
+          test -n "$cipher"
+          printf '%s' "$cipher" | base64 -d >/tmp/key.enc
+          openssl pkeyutl -decrypt -inkey /tmp/p.pem -in /tmp/key.enc -out /tmp/key.txt -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256
+          K=$(cat /tmp/key.txt); test ${#K} -ge 20; echo "::add-mask::$K"
+          rm -f /tmp/key.enc /tmp/p.pem /tmp/pub.pem /tmp/body.txt
+      - name: Inspect schema and template metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          K=$(cat /tmp/key.txt); echo "::add-mask::$K"
+          curl -fsS --max-time 30 -H "X-API-Key: $K" "https://api.prodigi.com/v4.0/products/GLOBAL-GRE-MOH-7X5-DIR" >/tmp/p.json
+          node <<'NODE'
+          const fs=require('fs');
+          const j=JSON.parse(fs.readFileSync('/tmp/p.json','utf8'));
+          const p=j.product||j;
+          const safe={topKeys:Object.keys(p),interesting:[]};
+          function walk(v,path='product'){
+            if(!v||typeof v!=='object') return;
+            for(const [k,val] of Object.entries(v)){
+              const q=path+'.'+k;
+              if(/template|file|url|page|resolution|size|dimension|printarea/i.test(k)){
+                if(typeof val==='string'||typeof val==='number'||typeof val==='boolean'||val===null) safe.interesting.push([q,val]);
+                else if(Array.isArray(val)) safe.interesting.push([q,`array(${val.length})`]);
+                else safe.interesting.push([q,Object.keys(val)]);
+              }
+              if(typeof val==='object'&&val) walk(val,q);
+            }
+          }
+          walk(p);
+          console.log('BTO_PRODIGI_SCHEMA='+JSON.stringify(safe));
+          NODE
+          rm -f /tmp/p.json /tmp/key.txt
