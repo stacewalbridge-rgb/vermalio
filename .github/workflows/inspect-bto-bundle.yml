@@ -34,14 +34,19 @@ jobs:
           node "$GITHUB_WORKSPACE/.github/bto-runtime-fix.js"
           node --check src/index.js
           node --check public/app.js
+          node --check "$GITHUB_WORKSPACE/built-to-offend/deploy/vermalio-prodigi-proxy.js"
           grep -q "built-to-offend-basket-v1" public/app.js
           grep -q "addToBasket(article,v,d,select)" public/app.js
+          grep -q "renderProdigiSheetBlob" public/app.js
+          grep -q "image/jpeg" public/app.js
           grep -q "request.method === \"OPTIONS\"" src/index.js
           grep -q "API_CORS_HEADERS" src/index.js
-          echo 'BTO basket/API patched source validates successfully.'
-      - name: Show patched basket path
+          grep -q "single-sheet" "$GITHUB_WORKSPACE/built-to-offend/deploy/vermalio-prodigi-proxy.js"
+          grep -q "defaultArea" "$GITHUB_WORKSPACE/built-to-offend/deploy/vermalio-prodigi-proxy.js"
+          echo 'BTO basket, print-sheet and API patched source validates successfully.'
+      - name: Show patched checkout path
         shell: bash
         run: |
           set -euo pipefail
           cd .inspect/built-to-offend-production
-          grep -n -E 'BASKET_KEY|addToBasket|checkoutBasketItem|miniCart|API_CORS_HEADERS|redirectHostIfNeeded' public/app.js src/index.js | head -120
+          grep -n -E 'BASKET_KEY|addToBasket|renderProdigiSheetBlob|printSheet|miniCart|API_CORS_HEADERS|redirectHostIfNeeded' public/app.js src/index.js | head -160
