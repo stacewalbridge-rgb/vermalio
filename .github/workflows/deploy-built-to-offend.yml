@@ -50,13 +50,19 @@ jobs:
           node --check public/app.js
           npx wrangler deploy --dry-run --config wrangler.jsonc
 
-      - name: Confirm Cloudflare credential is available
+      - name: Authenticate to Cloudflare
+        working-directory: .deploy/built-to-offend-production
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "No Cloudflare API token is available to GitHub Actions in this repository."
-            exit 2
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "Using an existing GitHub Actions Cloudflare token."
+            npx wrangler whoami
+          else
+            echo "No stored deployment token; starting Cloudflare secure device authorization."
+            unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+            npx wrangler login --device --browser=false
+            npx wrangler whoami
           fi
 
       - name: Deploy new Worker and auto-provision D1/R2
