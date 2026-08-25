@@ -38,6 +38,24 @@ jobs:
           test -f .deploy/built-to-offend-production/src/index.js
           test -f .deploy/built-to-offend-production/public/index.html
 
+      - name: Make R2 optional for initial launch
+        working-directory: .deploy/built-to-offend-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'wrangler.jsonc';
+          let s = fs.readFileSync(path, 'utf8');
+          s = s.replace(/,\s*"r2_buckets"\s*:\s*\[[\s\S]*?\](?=\s*})/m, '');
+          s = s.replace(/"r2_buckets"\s*:\s*\[[\s\S]*?\]\s*,/m, '');
+          const active = s.split('\n').filter(line => !line.trim().startsWith('//')).join('\n');
+          if (active.includes('"r2_buckets"')) throw new Error('Active R2 binding is still present');
+          fs.writeFileSync(path, s);
+          NODE
+          echo "Initial launch config (R2 intentionally disabled):"
+          cat wrangler.jsonc
+
       - name: Install dependencies
         working-directory: .deploy/built-to-offend-production
         run: npm install --no-audit --no-fund
@@ -92,7 +110,7 @@ jobs:
           fi
           npx wrangler whoami
 
-      - name: Deploy new Worker and auto-provision D1/R2
+      - name: Deploy new Worker and D1
         working-directory: .deploy/built-to-offend-production
         run: npx wrangler deploy --config wrangler.jsonc
 
