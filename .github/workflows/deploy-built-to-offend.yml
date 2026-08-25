@@ -21,7 +21,6 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
       WRANGLER_SEND_METRICS: "false"
       BTO_DIR: ${{ github.workspace }}/.deploy/built-to-offend-production
-      PRODIGI_PROXY_URL: https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi
       PRODIGI_SKU: GLOBAL-GRE-MOH-7X5-DIR
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +29,42 @@ jobs:
         with:
           node-version: 22
 
-      - name: Unpack production build and apply secure live-checkout patch
+      - name: Receive Prodigi live key through encrypted one-time handoff
+        id: prodigi_handoff
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/bto-prodigi-private.pem >/dev/null 2>&1
+          openssl pkey -in /tmp/bto-prodigi-private.pem -pubout -out /tmp/bto-prodigi-public.pem >/dev/null 2>&1
+          pub=$(base64 -w0 /tmp/bto-prodigi-public.pem)
+          cat >/tmp/handoff-body.txt <<EOF
+          BTO_PRODIGI_PUBLIC_KEY_B64:$pub
+
+          Post only RSA-OAEP/SHA-256 encrypted ciphertext beginning PRODIGI_SECRET_CIPHERTEXT_B64:. Never post plaintext.
+          EOF
+          issue_url=$(gh issue create --title "Built To Offend encrypted Prodigi key handoff — deploy run ${{ github.run_number }}" --body-file /tmp/handoff-body.txt)
+          issue_number=${issue_url##*/}
+          echo "issue_number=$issue_number" >> "$GITHUB_OUTPUT"
+          echo "Waiting for encrypted Prodigi key handoff on issue #$issue_number"
+          cipher=""
+          for attempt in $(seq 1 180); do
+            cipher=$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue_number/comments" --jq '.[].body' 2>/dev/null | sed -n 's/^PRODIGI_SECRET_CIPHERTEXT_B64://p' | tr -d '\r\n\t ' | tail -1 || true)
+            if [ -n "$cipher" ]; then break; fi
+            sleep 2
+          done
+          test -n "$cipher"
+          printf '%s' "$cipher" | base64 -d >/tmp/prodigi-key.enc
+          openssl pkeyutl -decrypt -inkey /tmp/bto-prodigi-private.pem -in /tmp/prodigi-key.enc -out /tmp/prodigi-key.txt -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256
+          PRODIGI_KEY=$(cat /tmp/prodigi-key.txt)
+          test ${#PRODIGI_KEY} -ge 20
+          echo "::add-mask::$PRODIGI_KEY"
+          chmod 600 /tmp/prodigi-key.txt
+          rm -f /tmp/prodigi-key.enc /tmp/bto-prodigi-private.pem /tmp/bto-prodigi-public.pem /tmp/handoff-body.txt
+
+      - name: Rebuild exact shop and apply final secure Prodigi patch
         shell: bash
         run: |
           set -euo pipefail
@@ -41,36 +75,38 @@ jobs:
           tar -xJf .deploy/built-to-offend.tar.xz -C .deploy
           test -f "$BTO_DIR/wrangler.jsonc"
           test -f "$BTO_DIR/src/index.js"
-          test -f "$BTO_DIR/public/index.html"
+          test -f "$BTO_DIR/public/app.js"
           cp built-to-offend/deploy/0002_secure_tokens.sql "$BTO_DIR/migrations/0002_secure_tokens.sql"
           cd "$BTO_DIR"
           patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/prodigi-single-asset.patch"
           node "$GITHUB_WORKSPACE/.github/bto-seo-build.js"
 
           node <<'NODE'
-          const fs = require('fs');
-          const path = 'wrangler.jsonc';
-          const cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const fs=require('fs');
+          const p='wrangler.jsonc';
+          const cfg=JSON.parse(fs.readFileSync(p,'utf8'));
           delete cfg.r2_buckets;
-          cfg.kv_namespaces = [{ binding: 'ASSET_BUCKET', id: 'KV_NAMESPACE_ID' }];
-          cfg.vars = {
-            ...(cfg.vars || {}),
-            PUBLIC_BASE_URL: 'https://builttooffend.com',
-            CARD_PRICE_PENCE: '499',
-            UK_SHIPPING_PENCE: '199',
-            PHOTO_ADDON_PENCE: '100',
-            STRIPE_STANDARD_PAYMENT_LINK: 'https://buy.stripe.com/14A4gA3IEfWa3O7a5J8so02',
-            STRIPE_PHOTO_PAYMENT_LINK: 'https://buy.stripe.com/00w8wQ92YcJY4Sb1zd8so03',
-            PRINT_PROVIDER: 'hold',
-            PRODIGI_ENV: 'live',
-            PRODIGI_SKU: 'GLOBAL-GRE-MOH-7X5-DIR',
-            PRODIGI_SHIPPING_METHOD: 'Budget'
+          cfg.kv_namespaces=[{binding:'ASSET_BUCKET',id:'4935699f8f314459950e7e2c8c16fa77'}];
+          cfg.d1_databases=[{binding:'DB',database_name:'built-to-offend-db',database_id:'8785a79e-4386-4cfe-bda9-7823632d5b2f'}];
+          cfg.vars={
+            ...(cfg.vars||{}),
+            PUBLIC_BASE_URL:'https://builttooffend.com',
+            CARD_PRICE_PENCE:'499',
+            UK_SHIPPING_PENCE:'199',
+            PHOTO_ADDON_PENCE:'100',
+            STRIPE_STANDARD_PAYMENT_LINK:'https://buy.stripe.com/14A4gA3IEfWa3O7a5J8so02',
+            STRIPE_PHOTO_PAYMENT_LINK:'https://buy.stripe.com/00w8wQ92YcJY4Sb1zd8so03',
+            PRINT_PROVIDER:'prodigi',
+            PRODIGI_ENV:'live',
+            PRODIGI_SKU:'GLOBAL-GRE-MOH-7X5-DIR',
+            PRODIGI_SHIPPING_METHOD:'Budget'
           };
           delete cfg.vars.PRODIGI_PROXY_URL;
-          fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
+          fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\n');
           NODE
 
-      - name: Install dependencies and validate patched shop
+      - name: Install dependencies and validate production build
         working-directory: .deploy/built-to-offend-production
         shell: bash
         run: |
@@ -78,13 +114,37 @@ jobs:
           npm install --no-audit --no-fund
           node --check src/index.js
           node --check public/app.js
+          grep -q 'W=6118,H=2161' public/app.js
+          grep -q "uploadAsset(order.orderId,order.uploadToken,'print',printBlob)" public/app.js
+          grep -q 'assets: \[{ printArea: "default", url: printUrl }\]' src/index.js
+          grep -q 'outcome === "createdwithissues"' src/index.js
           test -f public/robots.txt
           test -f public/sitemap.xml
-          test -f public/novelty-cards.html
-          grep -q 'Funny Personalised' public/index.html
-          grep -q 'https://builttooffend.com/sitemap.xml' public/robots.txt
+          npx wrangler deploy --dry-run --config wrangler.jsonc
 
-      - name: Authenticate to Cloudflare
+      - name: Validate Prodigi live key, UK card SKU and print canvas before Cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRODIGI_KEY=$(cat /tmp/prodigi-key.txt)
+          echo "::add-mask::$PRODIGI_KEY"
+          code=$(curl -sS --max-time 30 -o /tmp/prodigi-product.json -w '%{http_code}' -H "X-API-Key: $PRODIGI_KEY" "https://api.prodigi.com/v4.0/products/$PRODIGI_SKU")
+          test "$code" = 200
+          node <<'NODE'
+          const fs=require('fs');
+          const j=JSON.parse(fs.readFileSync('/tmp/prodigi-product.json','utf8'));
+          if(String(j?.outcome||'').toLowerCase()!=='ok') throw new Error('Prodigi live product lookup did not return Ok');
+          const p=j.product||j;
+          if(!p?.printAreas?.default?.required) throw new Error('Prodigi default print area is not required/available');
+          const gb=(p.variants||[]).find(v=>Array.isArray(v.shipsTo)&&v.shipsTo.includes('GB'));
+          const size=gb?.printAreaSizes?.default;
+          if(Number(size?.horizontalResolution)!==6118||Number(size?.verticalResolution)!==2161) throw new Error('Prodigi 7x5 direct card dimensions changed');
+          console.log('PRODIGI_VALIDATED: live key + GB direct card + 6118x2161 default print area');
+          NODE
+          rm -f /tmp/prodigi-product.json
+
+      - name: Authenticate to Cloudflare once
+        id: cloudflare_auth
         working-directory: .deploy/built-to-offend-production
         shell: bash
         env:
@@ -93,20 +153,27 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "Using an existing GitHub Actions Cloudflare token."
+            echo "Using existing GitHub Actions Cloudflare token."
             npx wrangler whoami
+            echo "issue_number=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
           export NO_COLOR=1 FORCE_COLOR=0
           rm -f /tmp/cloudflare-device-login.log
           set +e
-          (npx wrangler login --device --browser=false > /tmp/cloudflare-device-login.log 2>&1) &
+          (npx wrangler login --device --browser=false >/tmp/cloudflare-device-login.log 2>&1) &
           login_pid=$!
           set -e
-          sleep 8
-          printf '\nDeployment run: %s\n\n' "$RUN_URL" >> /tmp/cloudflare-device-login.log
-          gh issue create --title "Cloudflare approval required — Built To Offend FINAL — run ${{ github.run_number }}" --body-file /tmp/cloudflare-device-login.log || true
+          for poll in $(seq 1 45); do
+            if grep -q 'enter the code' /tmp/cloudflare-device-login.log 2>/dev/null; then break; fi
+            sleep 1
+          done
+          grep -q 'enter the code' /tmp/cloudflare-device-login.log
+          printf '\nDeployment run: %s\n\n' "$RUN_URL" >>/tmp/cloudflare-device-login.log
+          issue_url=$(gh issue create --title "Cloudflare approval required — BUILT TO OFFEND PRODIGI LIVE — run ${{ github.run_number }}" --body-file /tmp/cloudflare-device-login.log)
+          issue_number=${issue_url##*/}
+          echo "issue_number=$issue_number" >> "$GITHUB_OUTPUT"
           set +e
           wait "$login_pid"
           rc=$?
@@ -115,209 +182,55 @@ jobs:
           test "$rc" = 0
           npx wrangler whoami
 
-      - name: Create or bind private Workers KV artwork namespace
+      - name: Install Prodigi runtime secret, migrate and deploy
         working-directory: .deploy/built-to-offend-production
         shell: bash
         run: |
           set -euo pipefail
-          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
-          export NO_COLOR=1 FORCE_COLOR=0
-          npx wrangler kv namespace list > /tmp/bto-kv-list.json
-          kv_id=$(node <<'NODE'
-          const fs = require('fs');
-          const list = JSON.parse(fs.readFileSync('/tmp/bto-kv-list.json', 'utf8'));
-          const hit = list.find(x => x.title === 'BTO_PRIVATE_ASSETS' || x.title === 'built-to-offend-private-assets' || String(x.title || '').endsWith('-BTO_PRIVATE_ASSETS'));
-          if (hit?.id) process.stdout.write(hit.id);
-          NODE
-          )
-          if [ -z "$kv_id" ]; then
-            npx wrangler kv namespace create BTO_PRIVATE_ASSETS --config wrangler.jsonc
-            npx wrangler kv namespace list > /tmp/bto-kv-list.json
-            kv_id=$(node <<'NODE'
-          const fs = require('fs');
-          const list = JSON.parse(fs.readFileSync('/tmp/bto-kv-list.json', 'utf8'));
-          const hit = list.find(x => x.title === 'BTO_PRIVATE_ASSETS' || x.title === 'built-to-offend-private-assets' || String(x.title || '').endsWith('-BTO_PRIVATE_ASSETS'));
-          if (!hit?.id) throw new Error('Private artwork KV namespace was not found');
-          process.stdout.write(hit.id);
-          NODE
-            )
-          fi
-          KV_ID="$kv_id" node <<'NODE'
-          const fs = require('fs');
-          const path = 'wrangler.jsonc';
-          const cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
-          cfg.kv_namespaces = [{ binding: 'ASSET_BUCKET', id: process.env.KV_ID }];
-          fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
-          NODE
-
-      - name: Bind existing D1 order database
-        working-directory: .deploy/built-to-offend-production
-        shell: bash
-        run: |
-          set -euo pipefail
-          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
-          export NO_COLOR=1 FORCE_COLOR=0
-          npx wrangler d1 list --json > /tmp/d1-list.json
-          node <<'NODE'
-          const fs = require('fs');
-          const list = JSON.parse(fs.readFileSync('/tmp/d1-list.json', 'utf8'));
-          const db = list.find(x => x.name === 'built-to-offend-db');
-          if (!db) throw new Error('Existing D1 database built-to-offend-db was not found');
-          const id = db.uuid || db.id || db.database_id;
-          if (!id) throw new Error('D1 database ID was not present');
-          const path = 'wrangler.jsonc';
-          const cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
-          cfg.d1_databases = [{ binding: 'DB', database_name: 'built-to-offend-db', database_id: id }];
-          fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
-          NODE
-
-      - name: Apply secure order migrations
-        working-directory: .deploy/built-to-offend-production
-        shell: bash
-        run: |
-          set -euo pipefail
-          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; fi
+          PRODIGI_KEY=$(cat /tmp/prodigi-key.txt)
+          echo "::add-mask::$PRODIGI_KEY"
+          printf '%s' "$PRODIGI_KEY" | npx wrangler secret put PRODIGI_API_KEY --config wrangler.jsonc >/tmp/bto-secret-put.log 2>&1
+          unset PRODIGI_KEY
+          rm -f /tmp/prodigi-key.txt /tmp/bto-secret-put.log
           npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc
-
-      - name: Prepare Vermalio fulfilment bridge and detect existing Prodigi key
-        id: prodigi_secret
-        shell: bash
-        run: |
-          set -euo pipefail
-          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
-          rm -rf /tmp/vermalio-live
-          git fetch --depth=1 origin built-to-offend-prodigi-webhook:refs/remotes/origin/built-to-offend-prodigi-webhook
-          git worktree add --detach /tmp/vermalio-live origin/built-to-offend-prodigi-webhook
-          cd /tmp/vermalio-live
-          npm install --no-audit --no-fund
-          npx wrangler secret list --config wrangler.jsonc > /tmp/vermalio-secret-list.json
-          if node <<'NODE'
-          const fs = require('fs');
-          const list = JSON.parse(fs.readFileSync('/tmp/vermalio-secret-list.json', 'utf8'));
-          const names = new Set(list.map(x => x.name));
-          const found = ['PRODIGI_API_KEY','PRODIGI_LIVE_API_KEY','PRODIGI_KEY'].some(name => names.has(name));
-          process.exit(found ? 0 : 1);
-          NODE
-          then
-            echo "has_prodigi=true" >> "$GITHUB_OUTPUT"
-            echo "Existing Prodigi credential found on Vermalio."
-          else
-            echo "has_prodigi=false" >> "$GITHUB_OUTPUT"
-            echo "No Prodigi API credential is attached to Vermalio; checkout will remain closed."
-          fi
-          rm -f /tmp/vermalio-secret-list.json
-
-      - name: Deploy and verify private Prodigi bridge
-        if: steps.prodigi_secret.outputs.has_prodigi == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
-          proxy_token=$(openssl rand -hex 32)
-          proxy_hash=$(printf '%s' "$proxy_token" | sha256sum | awk '{print $1}')
-
-          cp "$GITHUB_WORKSPACE/built-to-offend/deploy/vermalio-prodigi-proxy.js" /tmp/vermalio-live/src/bto-prodigi-proxy.js
-          PROXY_HASH="$proxy_hash" node <<'NODE'
-          const fs = require('fs');
-          const modulePath = '/tmp/vermalio-live/src/bto-prodigi-proxy.js';
-          let mod = fs.readFileSync(modulePath, 'utf8');
-          mod = mod.replace('__BTO_PROXY_TOKEN_HASH__', process.env.PROXY_HASH);
-          if (mod.includes('__BTO_PROXY_TOKEN_HASH__')) throw new Error('Proxy token hash placeholder remains');
-          fs.writeFileSync(modulePath, mod);
-          const indexPath = '/tmp/vermalio-live/src/index.js';
-          let source = fs.readFileSync(indexPath, 'utf8');
-          const importLine = 'import { handleBtoProdigiProxy } from "./bto-prodigi-proxy.js";\n';
-          if (!source.includes(importLine.trim())) source = importLine + source;
-          const exportPos = source.indexOf('export default {');
-          const marker = '    const url = new URL(request.url);\n';
-          const markerPos = source.indexOf(marker, exportPos);
-          if (exportPos < 0 || markerPos < 0) throw new Error('Vermalio Worker route marker not found');
-          const route = '    if (url.pathname.startsWith("/api/internal/bto/prodigi")) {\n      return handleBtoProdigiProxy(request, env, url);\n    }\n\n';
-          if (!source.includes(route)) {
-            const insertAt = markerPos + marker.length;
-            source = source.slice(0, insertAt) + route + source.slice(insertAt);
-          }
-          fs.writeFileSync(indexPath, source);
-          NODE
-
-          cd /tmp/vermalio-live
           node --check src/index.js
-          node --check src/bto-prodigi-proxy.js
+          node --check public/app.js
           npx wrangler deploy --dry-run --config wrangler.jsonc
           npx wrangler deploy --config wrangler.jsonc
 
-          set +e
-          http_code=$(curl -sS --max-time 30 -o /tmp/prodigi-health.json -w '%{http_code}' -H "Authorization: Bearer $proxy_token" "$PRODIGI_PROXY_URL/health?sku=$PRODIGI_SKU")
-          set -e
-          proxy_ok=0
-          if [ "$http_code" = "200" ] && node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync("/tmp/prodigi-health.json","utf8")); process.exit(j.ok===true?0:1)'; then
-            proxy_ok=1
-          fi
-
-          if [ "$proxy_ok" = "1" ]; then
-            PROXY_TOKEN="$proxy_token" node <<'NODE'
-          const fs = require('fs');
-          const token = process.env.PROXY_TOKEN;
-          if (!/^[0-9a-f]{64}$/.test(token)) throw new Error('Invalid generated bridge token');
-          const now = new Date().toISOString();
-          fs.writeFileSync('/tmp/bto-prodigi-token.sql', `INSERT INTO internal_config(key,value,updated_at) VALUES('prodigi_proxy_token','${token}','${now}') ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at;\n`, { mode: 0o600 });
-          NODE
-            cd "$BTO_DIR"
-            npx wrangler d1 execute DB --remote --config wrangler.jsonc --file /tmp/bto-prodigi-token.sql > /tmp/bto-prodigi-token-result.txt
-            rm -f /tmp/bto-prodigi-token.sql /tmp/bto-prodigi-token-result.txt
-            PRODIGI_PROXY_URL="$PRODIGI_PROXY_URL" node <<'NODE'
-          const fs = require('fs');
-          const p = 'wrangler.jsonc';
-          const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
-          cfg.vars = cfg.vars || {};
-          cfg.vars.PRINT_PROVIDER = 'prodigi';
-          cfg.vars.PRODIGI_ENV = 'live';
-          cfg.vars.PRODIGI_PROXY_URL = process.env.PRODIGI_PROXY_URL;
-          fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
-          NODE
-            echo "Live Prodigi validation passed; automatic fulfilment enabled."
-          else
-            echo "Live Prodigi validation failed (HTTP $http_code); checkout remains safely closed."
-            cat /tmp/prodigi-health.json || true
-          fi
-          rm -f /tmp/prodigi-health.json
-          unset proxy_token proxy_hash
-
-      - name: Validate and deploy Built To Offend live shop
-        working-directory: .deploy/built-to-offend-production
-        shell: bash
-        run: |
-          set -euo pipefail
-          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
-          node --check src/index.js
-          npx wrangler deploy --dry-run --config wrangler.jsonc
-          npx wrangler deploy --config wrangler.jsonc
-
-      - name: Verify live ordering readiness and SEO
+      - name: Verify live automatic ordering and production assets
         shell: bash
         run: |
           set -euo pipefail
           ok=0
-          for attempt in $(seq 1 18); do
-            body=$(curl -fsS --max-time 20 https://builttooffend.com/api/health || true)
-            if echo "$body" | grep -q '"ok":true'; then ok=1; break; fi
+          config=''
+          for attempt in $(seq 1 30); do
+            config=$(curl -fsS --max-time 20 "https://builttooffend.com/api/config?cb=$(date +%s%N)" || true)
+            if CONFIG_JSON="$config" node -e 'const c=JSON.parse(process.env.CONFIG_JSON||"{}");process.exit(c.checkoutReady===true&&c.printer==="prodigi"?0:1)' 2>/dev/null; then
+              ok=1
+              break
+            fi
             sleep 5
           done
           test "$ok" = 1
-          config=$(curl -fsS --max-time 20 https://builttooffend.com/api/config)
           echo "$config"
-          CONFIG_JSON="$config" node <<'NODE'
-          const cfg = JSON.parse(process.env.CONFIG_JSON);
-          if (cfg.checkoutReady !== true || cfg.printer !== 'prodigi') {
-            console.error('Live ordering is not ready because Prodigi live validation did not pass.');
-            process.exit(1);
-          }
-          console.log('READY: Stripe payment -> Prodigi automatic fulfilment.');
-          NODE
+          health=$(curl -fsS --max-time 20 "https://builttooffend.com/api/health?cb=$(date +%s%N)")
+          echo "$health" | grep -q '"ok":true'
+          curl -fsS "https://builttooffend.com/app.js?cb=$(date +%s%N)" | grep -q 'W=6118,H=2161'
           curl -fsS https://builttooffend.com/robots.txt | grep -q 'Sitemap: https://builttooffend.com/sitemap.xml'
           curl -fsS https://builttooffend.com/sitemap.xml | grep -q 'novelty-cards.html'
-          curl -fsS https://builttooffend.com/novelty-cards.html | grep -qi 'novelty greeting cards'
-          curl -fsS https://builttooffend.com/ | grep -q 'rel="canonical" href="https://builttooffend.com/"'
-          curl -fsSI https://www.builttooffend.com/ | head -10
-          curl -fsSI https://builttooffend.co.uk/ | head -10
-          curl -fsSI https://www.builttooffend.co.uk/ | head -10
+          echo 'READY: Built To Offend -> Stripe -> direct Prodigi automatic print and dispatch.'
+
+      - name: Close temporary authorization issues
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HANDOFF_ISSUE: ${{ steps.prodigi_handoff.outputs.issue_number }}
+          CF_ISSUE: ${{ steps.cloudflare_auth.outputs.issue_number }}
+        run: |
+          set +e
+          if [ -n "${HANDOFF_ISSUE:-}" ]; then gh issue close "$HANDOFF_ISSUE" --comment "Encrypted handoff window closed." >/dev/null 2>&1; fi
+          if [ -n "${CF_ISSUE:-}" ]; then gh issue close "$CF_ISSUE" --comment "Cloudflare deployment authorization window closed." >/dev/null 2>&1; fi
+          exit 0
