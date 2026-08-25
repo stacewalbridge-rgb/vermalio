@@ -1,0 +1,248 @@
+name: BTO Build Prodigi Single Asset Patch
+
+on:
+  push:
+    branches: [bto-source-inspect]
+    paths:
+      - ".github/workflows/bto-build-prodigi-single-asset-patch.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and validate Prodigi single-asset patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/bto-src && mkdir -p /tmp/bto-src
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 | base64 -d > /tmp/bto.tar.xz
+          tar -xJf /tmp/bto.tar.xz -C /tmp/bto-src
+          root=$(find /tmp/bto-src -type f -path '*/src/index.js' -printf '%h\n' | head -1 | sed 's#/src$##')
+          test -n "$root"
+          cd "$root"
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          cp src/index.js /tmp/index.before.js
+          cp public/app.js /tmp/app.before.js
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_function(text, name, replacement):
+              needle = f"async function {name}("
+              start = text.find(needle)
+              if start < 0:
+                  needle = f"function {name}("
+                  start = text.find(needle)
+              if start < 0:
+                  raise SystemExit(f"function not found: {name}")
+              brace = text.find('{', start)
+              depth = 0
+              in_s = in_d = in_t = False
+              esc = False
+              i = brace
+              while i < len(text):
+                  c = text[i]
+                  if esc:
+                      esc = False; i += 1; continue
+                  if c == '\\':
+                      esc = True; i += 1; continue
+                  if not in_d and not in_t and c == "'": in_s = not in_s
+                  elif not in_s and not in_t and c == '"': in_d = not in_d
+                  elif not in_s and not in_d and c == '`': in_t = not in_t
+                  elif not in_s and not in_d and not in_t:
+                      if c == '{': depth += 1
+                      elif c == '}':
+                          depth -= 1
+                          if depth == 0:
+                              return text[:start] + replacement.rstrip() + "\n" + text[i+1:]
+                  i += 1
+              raise SystemExit(f"unterminated function: {name}")
+
+          p = Path('src/index.js')
+          s = p.read_text()
+          s = s.replace('if (!orderId || !["outside", "inside"].includes(kind)) return json({ error: "Invalid asset request" }, 400);', 'if (!orderId || !["outside", "inside", "print"].includes(kind)) return json({ error: "Invalid asset request" }, 400);')
+          s = s.replace('const field = kind === "outside" ? "outside_asset_key" : "inside_asset_key";', 'const field = kind === "inside" ? "inside_asset_key" : "outside_asset_key";')
+          s = s.replace('if (!order.outside_asset_key || !order.inside_asset_key) return json({ error: "Print artwork is still being prepared. Try again." }, 409);', 'if (!order.outside_asset_key) return json({ error: "Print artwork is still being prepared. Try again." }, 409);')
+
+          s = replace_function(s, 'createPrintAssetUrls', r'''async function createPrintAssetUrls(orderId, env) {
+            if (!env.DB) throw new Error("Order database is unavailable");
+            const token = randomToken(32);
+            const hash = await sha256Hex(token);
+            const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            await env.DB.prepare("UPDATE orders SET print_token_hash=?, print_token_expires_at=?, updated_at=? WHERE id=?")
+              .bind(hash, expires, new Date().toISOString(), orderId)
+              .run();
+            const base = env.PUBLIC_BASE_URL || "https://builttooffend.com";
+            return {
+              printUrl: `${base}/api/print-asset/${encodeURIComponent(orderId)}/print?token=${encodeURIComponent(token)}`,
+            };
+          }''')
+
+          s = replace_function(s, 'servePrintAsset', r'''async function servePrintAsset(env, orderId, kind, url) {
+            if (!env.DB || !env.ASSET_BUCKET) return new Response("Storage unavailable", { status: 503 });
+            if (!["outside", "inside", "print"].includes(kind)) return new Response("Not found", { status: 404 });
+            const token = url.searchParams.get("token") || "";
+            if (!token) return new Response("Forbidden", { status: 403 });
+            const order = await env.DB.prepare("SELECT outside_asset_key,inside_asset_key,status,print_token_hash,print_token_expires_at FROM orders WHERE id=?")
+              .bind(orderId)
+              .first();
+            if (!order || !["paid", "submitted", "fulfilled", "printing", "fulfilment_retry"].includes(order.status)) return new Response("Not found", { status: 404 });
+            if (!order.print_token_hash || Date.parse(order.print_token_expires_at || "") < Date.now()) return new Response("Expired", { status: 403 });
+            const actual = await sha256Hex(token);
+            if (!timingSafeStringEqual(actual, order.print_token_hash)) return new Response("Forbidden", { status: 403 });
+            const key = kind === "inside" ? order.inside_asset_key : order.outside_asset_key;
+            if (!key) return new Response("Not found", { status: 404 });
+            const object = await env.ASSET_BUCKET.getWithMetadata(key, "arrayBuffer");
+            if (!object?.value) return new Response("Not found", { status: 404 });
+            return new Response(object.value, {
+              headers: {
+                "content-type": object.metadata?.contentType || "image/jpeg",
+                "cache-control": "private, no-store",
+                "x-content-type-options": "nosniff",
+              },
+            });
+          }''')
+
+          s = replace_function(s, 'prodigiProductDetails', r'''async function prodigiProductDetails(env) {
+            const sku = env.PRODIGI_SKU || "GLOBAL-GRE-MOH-7X5-DIR";
+            const base = env.PRODIGI_ENV === "live" ? "https://api.prodigi.com" : "https://api.sandbox.prodigi.com";
+            const response = await fetch(`${base}/v4.0/products/${encodeURIComponent(sku)}`, {
+              headers: { "X-API-Key": env.PRODIGI_API_KEY },
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || String(payload?.outcome || "").toLowerCase() !== "ok") {
+              throw new Error(`Prodigi product lookup failed: ${response.status}`);
+            }
+            const product = payload.product || payload;
+            if (!product?.printAreas?.default?.required) throw new Error("Prodigi greeting-card default print area is unavailable");
+            const gbVariant = (product.variants || []).find((v) => Array.isArray(v.shipsTo) && v.shipsTo.includes("GB"));
+            const size = gbVariant?.printAreaSizes?.default;
+            if (!size || Number(size.horizontalResolution) !== 6118 || Number(size.verticalResolution) !== 2161) {
+              throw new Error("Prodigi greeting-card print dimensions changed; checkout is held for artwork review");
+            }
+            return product;
+          }''')
+
+          # Proxy is deliberately bypassed: Built To Offend talks directly to Prodigi.
+          s = s.replace('  if (env.PRODIGI_PROXY_URL) return submitViaProdigiProxy(order, env);\n', '')
+          s = replace_function(s, 'submitToProdigi', r'''async function submitToProdigi(order, env) {
+            if (!env.PRODIGI_API_KEY) throw new Error("Prodigi API key is not configured");
+            const { printUrl } = await createPrintAssetUrls(order.id, env);
+            await prodigiProductDetails(env);
+            const base = env.PRODIGI_ENV === "live" ? "https://api.prodigi.com" : "https://api.sandbox.prodigi.com";
+            const recipient = JSON.parse(order.shipping_json || "{}");
+            const address = recipient.address || {};
+            if (!recipient.name || !address.line1 || !address.postal_code || !address.country || !address.city) {
+              throw new Error("Customer delivery address is incomplete");
+            }
+            const payload = {
+              merchantReference: order.id,
+              idempotencyKey: order.id,
+              shippingMethod: env.PRODIGI_SHIPPING_METHOD || "Budget",
+              recipient: {
+                name: recipient.name,
+                email: order.customer_email || undefined,
+                address: {
+                  line1: address.line1,
+                  line2: address.line2 || undefined,
+                  postalOrZipCode: address.postal_code,
+                  countryCode: address.country,
+                  townOrCity: address.city,
+                  stateOrCounty: address.state || undefined,
+                },
+              },
+              items: [{
+                merchantReference: `monster-${order.id}`,
+                sku: env.PRODIGI_SKU || "GLOBAL-GRE-MOH-7X5-DIR",
+                copies: 1,
+                sizing: "fillPrintArea",
+                recipientCost: { amount: ((order.price_pence + order.shipping_pence) / 100).toFixed(2), currency: "GBP" },
+                assets: [{ printArea: "default", url: printUrl }],
+              }],
+              metadata: { source: "builttooffend.com", brutality: String(order.brutality) },
+            };
+            const response = await fetch(`${base}/v4.0/orders`, {
+              method: "POST",
+              headers: { "X-API-Key": env.PRODIGI_API_KEY, "content-type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            const result = await response.json().catch(() => ({}));
+            const outcome = String(result?.outcome || "").toLowerCase();
+            const providerOrderId = result?.order?.id || result?.id || null;
+            if (!response.ok || !providerOrderId || outcome === "createdwithissues" || !["created", "onhold", "alreadyexists"].includes(outcome)) {
+              const issues = result?.order?.status?.issues || result?.issues || [];
+              throw new Error(`Prodigi order failed: ${result?.outcome || response.status}${issues.length ? ` — ${JSON.stringify(issues).slice(0, 500)}` : ""}`);
+            }
+            return { providerOrderId, raw: result };
+          }''')
+          p.write_text(s)
+
+          p = Path('public/app.js')
+          s = p.read_text()
+          start = s.find('async function renderPrintBlob(')
+          end = s.find('\nasync function apiJson(', start)
+          if start < 0 or end < 0: raise SystemExit('render block not found')
+          replacement = r'''async function renderProdigiCardBlob(front,inside,d){
+            const W=6118,H=2161;
+            const cuts=[0,1529,3059,4588,6118];
+            const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
+            const ctx=canvas.getContext('2d');
+
+            const cover=async(x,w)=>{
+              const grad=ctx.createLinearGradient(x,0,x+w,H);grad.addColorStop(0,'#090a0c');grad.addColorStop(.55,'#321047');grad.addColorStop(1,'#7a16a8');ctx.fillStyle=grad;ctx.fillRect(x,0,w,H);
+              if(d.art==='photo'&&selectedPhoto){try{const img=await loadImage(selectedPhoto);const scale=Math.max(w/img.width,H/img.height);const dw=img.width*scale,dh=img.height*scale;ctx.drawImage(img,x+(w-dw)/2,(H-dh)/2,dw,dh);ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(x,0,w,H)}catch{}}
+              ctx.fillStyle='#b9ff18';ctx.textAlign='center';ctx.font='900 56px Arial';ctx.fillText('BUILT TO OFFEND',x+w/2,150);
+              ctx.fillStyle='#ffffff';ctx.font='900 116px Arial';const lines=wrapLines(ctx,front.toUpperCase(),w-250).slice(0,6);let y=H/2-(lines.length-1)*72;for(const line of lines){ctx.fillText(line,x+w/2,y);y+=145}
+              ctx.fillStyle='#b9ff18';ctx.font='700 32px Arial';ctx.fillText('Say what you really mean.',x+w/2,H-145);
+            };
+            const message=(x,w)=>{
+              ctx.fillStyle='#f5f0e3';ctx.fillRect(x,0,w,H);
+              ctx.fillStyle='#131313';ctx.textAlign='left';ctx.font='900 48px Arial';ctx.fillText('A MESSAGE FROM THE MONSTER',x+125,190);
+              ctx.fillStyle='#6e168f';ctx.fillRect(x+125,230,270,14);
+              ctx.fillStyle='#171717';ctx.font='600 46px Arial';drawWrapped(ctx,inside,x+125,365,w-250,67,23);
+              ctx.fillStyle='#6d6872';ctx.font='500 25px Arial';ctx.fillText('BUILT TO OFFEND • builttooffend.com',x+125,H-115);
+            };
+
+            // Prodigi requires one four-panel image. Duplicate each logical surface
+            // across its pair so left/right panel ordering cannot blank the card.
+            await cover(cuts[0],cuts[1]-cuts[0]);
+            await cover(cuts[1],cuts[2]-cuts[1]);
+            message(cuts[2],cuts[3]-cuts[2]);
+            message(cuts[3],cuts[4]-cuts[3]);
+            return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Could not render Prodigi print artwork')),'image/jpeg',0.94));
+          }
+          '''
+          s = s[:start] + replacement + s[end:]
+          s = s.replace("async function uploadAsset(orderId,token,kind,blob){return apiJson(`/api/order-asset?order_id=${encodeURIComponent(orderId)}&kind=${encodeURIComponent(kind)}`,{method:'PUT',headers:{'content-type':'image/png','x-order-token':token},body:blob})}", "async function uploadAsset(orderId,token,kind,blob){return apiJson(`/api/order-asset?order_id=${encodeURIComponent(orderId)}&kind=${encodeURIComponent(kind)}`,{method:'PUT',headers:{'content-type':'image/jpeg','x-order-token':token},body:blob})}")
+          old = "const [outside,insideBlob]=await Promise.all([renderPrintBlob(front,inside,d,'outside'),renderPrintBlob(front,inside,d,'inside')]);\n    button.textContent='SECURING YOUR MONSTER…';\n    await Promise.all([uploadAsset(order.orderId,order.uploadToken,'outside',outside),uploadAsset(order.orderId,order.uploadToken,'inside',insideBlob)]);"
+          new = "const printBlob=await renderProdigiCardBlob(front,inside,d);\n    button.textContent='SECURING YOUR MONSTER…';\n    await uploadAsset(order.orderId,order.uploadToken,'print',printBlob);"
+          if old not in s: raise SystemExit('checkout asset block not found')
+          s = s.replace(old,new)
+          p.write_text(s)
+          PY
+
+          node --check src/index.js
+          node --check public/app.js
+          grep -q 'canvas.width=W' public/app.js
+          grep -q 'W=6118,H=2161' public/app.js
+          grep -q 'assets: \[{ printArea: "default", url: printUrl }\]' src/index.js
+          grep -q 'outcome === "createdwithissues"' src/index.js
+
+          mkdir -p "$GITHUB_WORKSPACE/_inspect"
+          cp src/index.js "$GITHUB_WORKSPACE/_inspect/bto-prodigi-index.js"
+          cp public/app.js "$GITHUB_WORKSPACE/_inspect/bto-prodigi-app.js"
+          {
+            diff -u --label src/index.js /tmp/index.before.js --label src/index.js src/index.js || true
+            diff -u --label public/app.js /tmp/app.before.js --label public/app.js public/app.js || true
+          } > "$GITHUB_WORKSPACE/_inspect/prodigi-single-asset.patch"
+          test -s "$GITHUB_WORKSPACE/_inspect/prodigi-single-asset.patch"
+          cd "$GITHUB_WORKSPACE"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add _inspect/bto-prodigi-index.js _inspect/bto-prodigi-app.js _inspect/prodigi-single-asset.patch
+          git commit -m "Build Prodigi single-file card fulfilment patch"
+          git push origin HEAD:bto-source-inspect
