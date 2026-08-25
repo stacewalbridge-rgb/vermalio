@@ -19,6 +19,9 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
       WRANGLER_SEND_METRICS: "false"
+      BTO_DIR: ${{ github.workspace }}/.deploy/built-to-offend-production
+      PRODIGI_PROXY_URL: https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi
+      PRODIGI_SKU: GLOBAL-GRE-MOH-7X5-DIR
     steps:
       - uses: actions/checkout@v4
 
@@ -26,110 +29,67 @@ jobs:
         with:
           node-version: 22
 
-      - name: Unpack production build
+      - name: Unpack production build and apply secure live-checkout patch
         shell: bash
         run: |
           set -euo pipefail
           rm -rf .deploy
           mkdir -p .deploy
-          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 | base64 -d > .deploy/built-to-offend.tar.xz
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 \
+            | base64 -d > .deploy/built-to-offend.tar.xz
           tar -xJf .deploy/built-to-offend.tar.xz -C .deploy
-          test -f .deploy/built-to-offend-production/wrangler.jsonc
-          test -f .deploy/built-to-offend-production/src/index.js
-          test -f .deploy/built-to-offend-production/public/app.js
+          test -f "$BTO_DIR/wrangler.jsonc"
+          test -f "$BTO_DIR/src/index.js"
+          test -f "$BTO_DIR/public/index.html"
+          cp built-to-offend/deploy/0002_secure_tokens.sql "$BTO_DIR/migrations/0002_secure_tokens.sql"
+          cd "$BTO_DIR"
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
 
-      - name: Patch private storage and live Stripe checkout
-        working-directory: .deploy/built-to-offend-production
-        shell: bash
-        run: |
-          set -euo pipefail
           node <<'NODE'
           const fs = require('fs');
-          const sourcePath = 'src/index.js';
-          let source = fs.readFileSync(sourcePath, 'utf8');
-
-          const oldPut = `  const key = \`orders/\${orderId}/\${kind}.\${contentType.includes("jpeg") ? "jpg" : "png"}\`;\n  await env.ASSET_BUCKET.put(key, bytes, { httpMetadata: { contentType, cacheControl: "private, max-age=0" } });\n  const field = kind === "outside" ? "outside_asset_key" : "inside_asset_key";`;
-          const newPut = `  const key = \`orders/\${orderId}/\${kind}.\${contentType.includes("jpeg") ? "jpg" : "png"}\`;\n  await env.ASSET_BUCKET.put(key, bytes, { expirationTtl: DESIGN_TTL_SECONDS * 4, metadata: { contentType } });\n  const field = kind === "outside" ? "outside_asset_key" : "inside_asset_key";`;
-          if (!source.includes(oldPut)) throw new Error('Artwork upload block not found');
-          source = source.replace(oldPut, newPut);
-
-          const oldGet = `  const object = await env.ASSET_BUCKET.get(key);\n  if (!object) return new Response("Not found", { status: 404 });\n  return new Response(object.body, {\n    headers: {\n      "content-type": object.httpMetadata?.contentType || "image/png",\n      "cache-control": "private, no-store",\n      "x-content-type-options": "nosniff",\n    },\n  });`;
-          const newGet = `  const object = await env.ASSET_BUCKET.getWithMetadata(key, "arrayBuffer");\n  if (!object?.value) return new Response("Not found", { status: 404 });\n  return new Response(object.value, {\n    headers: {\n      "content-type": object.metadata?.contentType || "image/png",\n      "cache-control": "private, no-store",\n      "x-content-type-options": "nosniff",\n    },\n  });`;
-          if (!source.includes(oldGet)) throw new Error('Artwork retrieval block not found');
-          source = source.replace(oldGet, newGet);
-
-          const checkoutReplacement = `async function createCheckout(request, env) {
-            if (!env.DB) return json({ error: "Order database is not connected yet." }, 503);
-            const body = await parseJsonLimited(request);
-            const orderId = clean(body.orderId, 80);
-            const token = clean(body.uploadToken, 200);
-            if (!(await verifyUploadToken(orderId, token, env))) return json({ error: "Order token expired. Please select the card again." }, 401);
-            const order = await env.DB.prepare("SELECT * FROM orders WHERE id=?").bind(orderId).first();
-            if (!order) return json({ error: "Order not found" }, 404);
-            if (!order.outside_asset_key || !order.inside_asset_key) return json({ error: "Print artwork is still being prepared. Try again." }, 409);
-            if (order.status !== "draft") return json({ error: "This order has already been sent to checkout." }, 409);
-            const link = order.art_mode === "photo" ? env.STRIPE_PHOTO_PAYMENT_LINK : env.STRIPE_STANDARD_PAYMENT_LINK;
-            if (!link) return json({ error: "Secure checkout is not connected yet." }, 503);
-            const checkoutUrl = link + (link.includes("?") ? "&" : "?") + "client_reference_id=" + encodeURIComponent(orderId);
-            await env.DB.prepare("UPDATE orders SET status='checkout', updated_at=? WHERE id=?").bind(new Date().toISOString(), orderId).run();
-            return json({ checkoutUrl });
-          }`;
-          const checkoutRegex = /async function createCheckout\(request, env\) \{[\s\S]*?\n\}\n\nfunction parseStripeSignature/;
-          if (!checkoutRegex.test(source)) throw new Error('Checkout function block not found');
-          source = source.replace(checkoutRegex, checkoutReplacement + '\n\nfunction parseStripeSignature');
-
-          const completedOld = `if (event.type === "checkout.session.completed" && event.data?.object?.payment_status === "paid") {`;
-          const completedNew = `if ((event.type === "checkout.session.completed" && event.data?.object?.payment_status === "paid") || event.type === "checkout.session.async_payment_succeeded") {`;
-          if (!source.includes(completedOld)) throw new Error('Stripe completion condition not found');
-          source = source.replace(completedOld, completedNew);
-
-          const updateOld = `      await env.DB.prepare(\`UPDATE orders SET status='paid', stripe_payment_intent=?, customer_email=?, shipping_json=?, updated_at=? WHERE id=? AND status IN ('checkout','draft')\`)\n        .bind(session.payment_intent || null, session.customer_details?.email || null, JSON.stringify(shipping || {}), new Date().toISOString(), orderId).run();`;
-          const updateNew = `      await env.DB.prepare(\`UPDATE orders SET status='paid', stripe_session_id=?, stripe_payment_intent=?, customer_email=?, shipping_json=?, updated_at=? WHERE id=? AND status IN ('checkout','draft')\`)\n        .bind(session.id || null, session.payment_intent || null, session.customer_details?.email || null, JSON.stringify(shipping || {}), new Date().toISOString(), orderId).run();`;
-          if (!source.includes(updateOld)) throw new Error('Stripe paid-order update block not found');
-          source = source.replace(updateOld, updateNew);
-
-          const fulfillOld = `      ctx.waitUntil(fulfillOrder(orderId, env).catch(() => {}));`;
-          const fulfillNew = `      if ((env.PRINT_PROVIDER || "hold").toLowerCase() !== "hold") ctx.waitUntil(fulfillOrder(orderId, env).catch(() => {}));`;
-          if (!source.includes(fulfillOld)) throw new Error('Fulfilment trigger not found');
-          source = source.replace(fulfillOld, fulfillNew);
-
-          const readyOld = `          checkoutReady: Boolean(env.STRIPE_SECRET_KEY && env.DB && env.ASSET_BUCKET),`;
-          const readyNew = `          checkoutReady: Boolean(env.STRIPE_STANDARD_PAYMENT_LINK && env.STRIPE_PHOTO_PAYMENT_LINK && env.STRIPE_WEBHOOK_SECRET && env.DB && env.ASSET_BUCKET),`;
-          if (!source.includes(readyOld)) throw new Error('Checkout readiness line not found');
-          source = source.replace(readyOld, readyNew);
-          fs.writeFileSync(sourcePath, source);
-
-          const configPath = 'wrangler.jsonc';
-          let configText = fs.readFileSync(configPath, 'utf8');
-          if (!/"r2_buckets"\s*:\s*\[[\s\S]*?\]/m.test(configText)) throw new Error('R2 binding block not found');
-          configText = configText.replace(/"r2_buckets"\s*:\s*\[[\s\S]*?\]/m, `"kv_namespaces": [\n    { "binding": "ASSET_BUCKET", "id": "KV_NAMESPACE_ID" }\n  ]`);
-          const cfg = JSON.parse(configText);
-          cfg.vars = cfg.vars || {};
-          cfg.vars.STRIPE_STANDARD_PAYMENT_LINK = 'https://buy.stripe.com/bJe9AUa724dsgAT0v98so00';
-          cfg.vars.STRIPE_PHOTO_PAYMENT_LINK = 'https://buy.stripe.com/9B6fZi0ws7pEgAT1zd8so01';
-          cfg.vars.PRINT_PROVIDER = 'hold';
-          fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2) + '\n');
+          const path = 'wrangler.jsonc';
+          const cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          delete cfg.r2_buckets;
+          cfg.kv_namespaces = [{ binding: 'ASSET_BUCKET', id: 'KV_NAMESPACE_ID' }];
+          cfg.vars = {
+            ...(cfg.vars || {}),
+            PUBLIC_BASE_URL: 'https://builttooffend.com',
+            CARD_PRICE_PENCE: '499',
+            UK_SHIPPING_PENCE: '199',
+            PHOTO_ADDON_PENCE: '100',
+            STRIPE_STANDARD_PAYMENT_LINK: 'https://buy.stripe.com/14A4gA3IEfWa3O7a5J8so02',
+            STRIPE_PHOTO_PAYMENT_LINK: 'https://buy.stripe.com/00w8wQ92YcJY4Sb1zd8so03',
+            PRINT_PROVIDER: 'hold',
+            PRODIGI_ENV: 'live',
+            PRODIGI_SKU: 'GLOBAL-GRE-MOH-7X5-DIR',
+            PRODIGI_SHIPPING_METHOD: 'Budget'
+          };
+          delete cfg.vars.PRODIGI_PROXY_URL;
+          fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
           NODE
 
-      - name: Install dependencies and validate
+      - name: Install dependencies and validate patched shop
         working-directory: .deploy/built-to-offend-production
+        shell: bash
         run: |
           set -euo pipefail
           npm install --no-audit --no-fund
           node --check src/index.js
           node --check public/app.js
-          grep -q 'STRIPE_STANDARD_PAYMENT_LINK' src/index.js
-          grep -q 'client_reference_id' src/index.js
 
       - name: Authenticate to Cloudflare
         working-directory: .deploy/built-to-offend-production
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then npx wrangler whoami; exit 0; fi
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "Using an existing GitHub Actions Cloudflare token."
+            npx wrangler whoami
+            exit 0
+          fi
           unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
           export NO_COLOR=1 FORCE_COLOR=0
           rm -f /tmp/cloudflare-device-login.log
@@ -139,7 +99,7 @@ jobs:
           set -e
           sleep 8
           printf '\nDeployment run: %s\n\n' "$RUN_URL" >> /tmp/cloudflare-device-login.log
-          gh issue create --title "Cloudflare approval required — Built To Offend LIVE checkout — run ${{ github.run_number }}" --body-file /tmp/cloudflare-device-login.log || true
+          gh issue create --title "Cloudflare approval required — Built To Offend FINAL — run ${{ github.run_number }}" --body-file /tmp/cloudflare-device-login.log || true
           set +e
           wait "$login_pid"
           rc=$?
@@ -148,7 +108,7 @@ jobs:
           test "$rc" = 0
           npx wrangler whoami
 
-      - name: Bind existing KV and D1
+      - name: Create or bind private Workers KV artwork namespace
         working-directory: .deploy/built-to-offend-production
         shell: bash
         run: |
@@ -156,69 +116,197 @@ jobs:
           unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
           export NO_COLOR=1 FORCE_COLOR=0
           npx wrangler kv namespace list > /tmp/bto-kv-list.json
-          kv_id=$(node -e "const x=require('/tmp/bto-kv-list.json');const h=x.find(v=>v.title==='BTO_PRIVATE_ASSETS'||String(v.title||'').endsWith('-BTO_PRIVATE_ASSETS'));if(h)process.stdout.write(h.id)")
-          test -n "$kv_id"
+          kv_id=$(node <<'NODE'
+          const fs = require('fs');
+          const list = JSON.parse(fs.readFileSync('/tmp/bto-kv-list.json', 'utf8'));
+          const hit = list.find(x => x.title === 'BTO_PRIVATE_ASSETS' || x.title === 'built-to-offend-private-assets' || String(x.title || '').endsWith('-BTO_PRIVATE_ASSETS'));
+          if (hit?.id) process.stdout.write(hit.id);
+          NODE
+          )
+          if [ -z "$kv_id" ]; then
+            npx wrangler kv namespace create BTO_PRIVATE_ASSETS --config wrangler.jsonc
+            npx wrangler kv namespace list > /tmp/bto-kv-list.json
+            kv_id=$(node <<'NODE'
+          const fs = require('fs');
+          const list = JSON.parse(fs.readFileSync('/tmp/bto-kv-list.json', 'utf8'));
+          const hit = list.find(x => x.title === 'BTO_PRIVATE_ASSETS' || x.title === 'built-to-offend-private-assets' || String(x.title || '').endsWith('-BTO_PRIVATE_ASSETS'));
+          if (!hit?.id) throw new Error('Private artwork KV namespace was not found');
+          process.stdout.write(hit.id);
+          NODE
+            )
+          fi
           KV_ID="$kv_id" node <<'NODE'
-          const fs=require('fs'); const p='wrangler.jsonc'; const cfg=JSON.parse(fs.readFileSync(p,'utf8')); cfg.kv_namespaces=[{binding:'ASSET_BUCKET',id:process.env.KV_ID}]; fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\n');
+          const fs = require('fs');
+          const path = 'wrangler.jsonc';
+          const cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          cfg.kv_namespaces = [{ binding: 'ASSET_BUCKET', id: process.env.KV_ID }];
+          fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
           NODE
+
+      - name: Bind existing D1 order database
+        working-directory: .deploy/built-to-offend-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+          export NO_COLOR=1 FORCE_COLOR=0
           npx wrangler d1 list --json > /tmp/d1-list.json
-          db_id=$(node -e "const x=require('/tmp/d1-list.json');const h=x.find(v=>v.name==='built-to-offend-db');if(h)process.stdout.write(h.uuid||h.id||h.database_id||'')")
-          test -n "$db_id"
-          DB_ID="$db_id" node <<'NODE'
-          const fs=require('fs'); const p='wrangler.jsonc'; const cfg=JSON.parse(fs.readFileSync(p,'utf8')); cfg.d1_databases=[{binding:'DB',database_name:'built-to-offend-db',database_id:process.env.DB_ID}]; fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\n');
+          node <<'NODE'
+          const fs = require('fs');
+          const list = JSON.parse(fs.readFileSync('/tmp/d1-list.json', 'utf8'));
+          const db = list.find(x => x.name === 'built-to-offend-db');
+          if (!db) throw new Error('Existing D1 database built-to-offend-db was not found');
+          const id = db.uuid || db.id || db.database_id;
+          if (!id) throw new Error('D1 database ID was not present');
+          const path = 'wrangler.jsonc';
+          const cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          cfg.d1_databases = [{ binding: 'DB', database_name: 'built-to-offend-db', database_id: id }];
+          fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
           NODE
 
-      - name: Secure Stripe webhook secret handoff
+      - name: Apply secure order migrations
         working-directory: .deploy/built-to-offend-production
-        env:
-          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
-          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/bto-private.pem >/dev/null 2>&1
-          openssl pkey -in /tmp/bto-private.pem -pubout -out /tmp/bto-public.pem >/dev/null 2>&1
-          pub=$(base64 -w0 /tmp/bto-public.pem)
-          issue_url=$(gh issue create --title "Built To Offend encrypted Stripe secret handoff — run ${{ github.run_number }}" --body "BTO_SECRET_PUBLIC_KEY_B64:${pub}\n\nPost only an RSA-OAEP/SHA-256 encrypted ciphertext. Plaintext secrets must never be posted here.")
-          issue_num=${issue_url##*/}
-          enc=''
-          for i in $(seq 1 72); do
-            enc=$(gh issue view "$issue_num" --json comments --jq -r '.comments[].body' | sed -n 's/^BTO_ENCRYPTED_STRIPE_WEBHOOK_SECRET://p' | tail -1)
-            if [ -n "$enc" ]; then break; fi
-            sleep 5
-          done
-          test -n "$enc"
-          printf '%s' "$enc" | base64 -d > /tmp/bto-secret.enc
-          openssl pkeyutl -decrypt -inkey /tmp/bto-private.pem -in /tmp/bto-secret.enc -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 > /tmp/bto-stripe-webhook.secret
-          test -s /tmp/bto-stripe-webhook.secret
-          cat /tmp/bto-stripe-webhook.secret | npx wrangler secret put STRIPE_WEBHOOK_SECRET --config wrangler.jsonc
-          rm -f /tmp/bto-private.pem /tmp/bto-public.pem /tmp/bto-secret.enc /tmp/bto-stripe-webhook.secret
-          gh issue close "$issue_num" --comment "Encrypted handoff consumed and Cloudflare secret installed. No plaintext secret was written to GitHub."
+          npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc
 
-      - name: Validate and deploy
-        working-directory: .deploy/built-to-offend-production
+      - name: Prepare Vermalio fulfilment bridge and detect existing Prodigi key
+        id: prodigi_secret
         shell: bash
         run: |
           set -euo pipefail
           unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+          rm -rf /tmp/vermalio-live
+          git fetch --depth=1 origin built-to-offend-prodigi-webhook:refs/remotes/origin/built-to-offend-prodigi-webhook
+          git worktree add --detach /tmp/vermalio-live origin/built-to-offend-prodigi-webhook
+          cd /tmp/vermalio-live
+          npm install --no-audit --no-fund
+          npx wrangler secret list --config wrangler.jsonc > /tmp/vermalio-secret-list.json
+          if node <<'NODE'
+          const fs = require('fs');
+          const list = JSON.parse(fs.readFileSync('/tmp/vermalio-secret-list.json', 'utf8'));
+          const names = new Set(list.map(x => x.name));
+          const found = ['PRODIGI_API_KEY','PRODIGI_LIVE_API_KEY','PRODIGI_KEY'].some(name => names.has(name));
+          process.exit(found ? 0 : 1);
+          NODE
+          then
+            echo "has_prodigi=true" >> "$GITHUB_OUTPUT"
+            echo "Existing Prodigi credential found on Vermalio."
+          else
+            echo "has_prodigi=false" >> "$GITHUB_OUTPUT"
+            echo "No Prodigi API credential is attached to Vermalio; checkout will remain closed."
+          fi
+          rm -f /tmp/vermalio-secret-list.json
+
+      - name: Deploy and verify private Prodigi bridge
+        if: steps.prodigi_secret.outputs.has_prodigi == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+          proxy_token=$(openssl rand -hex 32)
+          proxy_hash=$(printf '%s' "$proxy_token" | sha256sum | awk '{print $1}')
+
+          cp "$GITHUB_WORKSPACE/built-to-offend/deploy/vermalio-prodigi-proxy.js" /tmp/vermalio-live/src/bto-prodigi-proxy.js
+          PROXY_HASH="$proxy_hash" node <<'NODE'
+          const fs = require('fs');
+          const modulePath = '/tmp/vermalio-live/src/bto-prodigi-proxy.js';
+          let mod = fs.readFileSync(modulePath, 'utf8');
+          mod = mod.replace('__BTO_PROXY_TOKEN_HASH__', process.env.PROXY_HASH);
+          if (mod.includes('__BTO_PROXY_TOKEN_HASH__')) throw new Error('Proxy token hash placeholder remains');
+          fs.writeFileSync(modulePath, mod);
+          const indexPath = '/tmp/vermalio-live/src/index.js';
+          let source = fs.readFileSync(indexPath, 'utf8');
+          const importLine = 'import { handleBtoProdigiProxy } from "./bto-prodigi-proxy.js";\n';
+          if (!source.includes(importLine.trim())) source = importLine + source;
+          const exportPos = source.indexOf('export default {');
+          const marker = '    const url = new URL(request.url);\n';
+          const markerPos = source.indexOf(marker, exportPos);
+          if (exportPos < 0 || markerPos < 0) throw new Error('Vermalio Worker route marker not found');
+          const route = '    if (url.pathname.startsWith("/api/internal/bto/prodigi")) {\n      return handleBtoProdigiProxy(request, env, url);\n    }\n\n';
+          if (!source.includes(route)) {
+            const insertAt = markerPos + marker.length;
+            source = source.slice(0, insertAt) + route + source.slice(insertAt);
+          }
+          fs.writeFileSync(indexPath, source);
+          NODE
+
+          cd /tmp/vermalio-live
+          node --check src/index.js
+          node --check src/bto-prodigi-proxy.js
           npx wrangler deploy --dry-run --config wrangler.jsonc
           npx wrangler deploy --config wrangler.jsonc
-          npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc
-          echo 'Configured Worker secrets:'
-          npx wrangler secret list --config wrangler.jsonc
 
-      - name: Verify live checkout
+          set +e
+          http_code=$(curl -sS --max-time 30 -o /tmp/prodigi-health.json -w '%{http_code}' -H "Authorization: Bearer $proxy_token" "$PRODIGI_PROXY_URL/health?sku=$PRODIGI_SKU")
+          set -e
+          proxy_ok=0
+          if [ "$http_code" = "200" ] && node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync("/tmp/prodigi-health.json","utf8")); process.exit(j.ok===true?0:1)'; then
+            proxy_ok=1
+          fi
+
+          if [ "$proxy_ok" = "1" ]; then
+            PROXY_TOKEN="$proxy_token" node <<'NODE'
+          const fs = require('fs');
+          const token = process.env.PROXY_TOKEN;
+          if (!/^[0-9a-f]{64}$/.test(token)) throw new Error('Invalid generated bridge token');
+          const now = new Date().toISOString();
+          fs.writeFileSync('/tmp/bto-prodigi-token.sql', `INSERT INTO internal_config(key,value,updated_at) VALUES('prodigi_proxy_token','${token}','${now}') ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at;\n`, { mode: 0o600 });
+          NODE
+            cd "$BTO_DIR"
+            npx wrangler d1 execute DB --remote --config wrangler.jsonc --file /tmp/bto-prodigi-token.sql > /tmp/bto-prodigi-token-result.txt
+            rm -f /tmp/bto-prodigi-token.sql /tmp/bto-prodigi-token-result.txt
+            PRODIGI_PROXY_URL="$PRODIGI_PROXY_URL" node <<'NODE'
+          const fs = require('fs');
+          const p = 'wrangler.jsonc';
+          const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+          cfg.vars = cfg.vars || {};
+          cfg.vars.PRINT_PROVIDER = 'prodigi';
+          cfg.vars.PRODIGI_ENV = 'live';
+          cfg.vars.PRODIGI_PROXY_URL = process.env.PRODIGI_PROXY_URL;
+          fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
+          NODE
+            echo "Live Prodigi validation passed; automatic fulfilment enabled."
+          else
+            echo "Live Prodigi validation failed (HTTP $http_code); checkout remains safely closed."
+            cat /tmp/prodigi-health.json || true
+          fi
+          rm -f /tmp/prodigi-health.json
+          unset proxy_token proxy_hash
+
+      - name: Validate and deploy Built To Offend live shop
+        working-directory: .deploy/built-to-offend-production
         shell: bash
         run: |
           set -euo pipefail
-          for i in $(seq 1 18); do
-            config=$(curl -fsS --max-time 20 https://builttooffend.com/api/config || true)
-            echo "$config"
-            if echo "$config" | grep -q '"checkoutReady":true'; then break; fi
-            sleep 10
+          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+          node --check src/index.js
+          npx wrangler deploy --dry-run --config wrangler.jsonc
+          npx wrangler deploy --config wrangler.jsonc
+
+      - name: Verify live ordering readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for attempt in $(seq 1 18); do
+            body=$(curl -fsS --max-time 20 https://builttooffend.com/api/health || true)
+            if echo "$body" | grep -q '"ok":true'; then ok=1; break; fi
+            sleep 5
           done
-          echo "$config" | grep -q '"checkoutReady":true'
-          curl -fsS https://builttooffend.com/api/health | grep -q '"ok":true'
-          curl -fsSI https://www.builttooffend.com/ | head -20
-          curl -fsSI https://builttooffend.co.uk/ | head -20
-          curl -fsSI https://www.builttooffend.co.uk/ | head -20
+          test "$ok" = 1
+          config=$(curl -fsS --max-time 20 https://builttooffend.com/api/config)
+          echo "$config"
+          CONFIG_JSON="$config" node <<'NODE'
+          const cfg = JSON.parse(process.env.CONFIG_JSON);
+          if (cfg.checkoutReady !== true || cfg.printer !== 'prodigi') {
+            console.error('Live ordering is not ready because Prodigi live validation did not pass.');
+            process.exit(1);
+          }
+          console.log('READY: Stripe payment -> Prodigi automatic fulfilment.');
+          NODE
+          curl -fsSI https://www.builttooffend.com/ | head -10
+          curl -fsSI https://builttooffend.co.uk/ | head -10
+          curl -fsSI https://www.builttooffend.co.uk/ | head -10
