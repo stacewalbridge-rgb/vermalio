@@ -1,0 +1,50 @@
+name: BTO Live Checkout Smoke
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/bto-live-checkout-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Exercise live order-to-Stripe path without payment
+        shell: bash
+        run: |
+          set -euo pipefail
+          order=$(curl -fsS --max-time 30 -X POST 'https://builttooffend.com/api/orders' \
+            -H 'content-type: application/json' \
+            --data '{"recipient":"Checkout Smoke Test","occasion":"Testing","brutality":1,"label":"The Savage","front":"TEST CARD - DO NOT PRINT","inside":"Automated checkout smoke test. No payment will be made.","art":"type"}')
+          echo "$order"
+          ORDER_JSON="$order" node -e 'const j=JSON.parse(process.env.ORDER_JSON||"{}"); if(!j.orderId||!j.uploadToken) process.exit(1)'
+          order_id=$(ORDER_JSON="$order" node -p 'JSON.parse(process.env.ORDER_JSON).orderId')
+          token=$(ORDER_JSON="$order" node -p 'JSON.parse(process.env.ORDER_JSON).uploadToken')
+          echo "::add-mask::$token"
+
+          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d >/tmp/pixel.png
+          for kind in outside inside; do
+            upload=$(curl -fsS --max-time 30 -X PUT "https://builttooffend.com/api/order-asset?order_id=${order_id}&kind=${kind}" \
+              -H 'content-type: image/png' \
+              -H "x-order-token: ${token}" \
+              --data-binary @/tmp/pixel.png)
+            echo "$upload"
+            UPLOAD="$upload" node -e 'const j=JSON.parse(process.env.UPLOAD||"{}"); if(j.ok!==true) process.exit(1)'
+          done
+
+          checkout=$(curl -fsS --max-time 30 -X POST 'https://builttooffend.com/api/checkout' \
+            -H 'content-type: application/json' \
+            --data "{\"orderId\":\"${order_id}\",\"uploadToken\":\"${token}\"}")
+          echo "$checkout"
+          CHECKOUT="$checkout" ORDER_ID="$order_id" node - <<'NODE'
+          const j=JSON.parse(process.env.CHECKOUT||'{}');
+          if(!j.checkoutUrl) process.exit(1);
+          const u=new URL(j.checkoutUrl);
+          if(u.hostname!=='buy.stripe.com') process.exit(2);
+          if(u.searchParams.get('client_reference_id')!==process.env.ORDER_ID) process.exit(3);
+          console.log('CHECKOUT_SMOKE_OK: ORDER THIS ONE can reach Stripe without payment.');
+          NODE
