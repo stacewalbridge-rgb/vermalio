@@ -14,15 +14,15 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Query live paid order status
+      - uses: actions/checkout@v4
+      - name: Inspect fulfilment retry implementation
         shell: bash
         run: |
           set -euo pipefail
-          url='https://builttooffend.com/api/order-status?session_id=cs_live_b1zrLDcYL5SfGlCc05WHqarTJtYV7b8U70LdwD9zKsaQ2q6Hjui4PKlslS'
-          for n in 1 2 3; do
-            echo "=== STATUS CHECK $n ==="
-            code=$(curl -sS --max-time 20 -o /tmp/status.json -w '%{http_code}' "$url")
-            echo "HTTP $code: $(cat /tmp/status.json)"
-            test "$code" = 200
-            sleep 3
-          done
+          rm -rf .inspect && mkdir -p .inspect
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 | base64 -d > .inspect/bto.tar.xz
+          tar -xJf .inspect/bto.tar.xz -C .inspect
+          cd .inspect/built-to-offend-production
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          node "$GITHUB_WORKSPACE/.github/bto-ai-transform.js"
+          nl -ba src/index.js | sed -n '450,535p'
