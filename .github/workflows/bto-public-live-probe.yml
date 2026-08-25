@@ -1,0 +1,31 @@
+name: BTO Public Live Probe
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/bto-public-live-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe public live endpoints
+        shell: bash
+        run: |
+          set -u
+          echo '=== Vermalio webhook health ==='
+          curl -sS -i --max-time 30 'https://vermalio.stace-walbridge.workers.dev/api/prodigi/webhook/health' || true
+          echo
+          echo '=== Vermalio permanent BTO Prodigi bridge health ==='
+          curl -sS -i --max-time 30 'https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi/health?sku=GLOBAL-GRE-MOH-7X5-DIR' || true
+          echo
+          echo '=== Built To Offend health ==='
+          curl -sS -i --max-time 30 'https://builttooffend.com/api/health' || true
+          echo
+          echo '=== Built To Offend config ==='
+          curl -sS -i --max-time 30 'https://builttooffend.com/api/config' || true
