@@ -1,0 +1,245 @@
+--- src/index.js
++++ src/index.js
+@@ -210,7 +210,7 @@
+   const orderId = clean(url.searchParams.get("order_id"), 80);
+   const kind = clean(url.searchParams.get("kind"), 20);
+   const token = request.headers.get("x-order-token") || "";
+-  if (!orderId || !["outside", "inside"].includes(kind)) return json({ error: "Invalid asset request" }, 400);
++  if (!orderId || !["outside", "inside", "print"].includes(kind)) return json({ error: "Invalid asset request" }, 400);
+   if (!(await verifyUploadToken(orderId, token, env))) return json({ error: "Upload token expired or invalid" }, 401);
+   const length = Number(request.headers.get("content-length") || 0);
+   if (length > MAX_ASSET_BYTES) return json({ error: "Asset too large" }, 413);
+@@ -223,7 +223,7 @@
+     expirationTtl: DESIGN_TTL_SECONDS * 4,
+     metadata: { contentType },
+   });
+-  const field = kind === "outside" ? "outside_asset_key" : "inside_asset_key";
++  const field = kind === "inside" ? "inside_asset_key" : "outside_asset_key";
+   await env.DB.prepare(`UPDATE orders SET ${field}=?, updated_at=? WHERE id=?`).bind(key, new Date().toISOString(), orderId).run();
+   return json({ ok: true, kind });
+ }
+@@ -236,7 +236,7 @@
+   if (!(await verifyUploadToken(orderId, token, env))) return json({ error: "Order token expired. Please select the card again." }, 401);
+   const order = await env.DB.prepare("SELECT * FROM orders WHERE id=?").bind(orderId).first();
+   if (!order) return json({ error: "Order not found" }, 404);
+-  if (!order.outside_asset_key || !order.inside_asset_key) return json({ error: "Print artwork is still being prepared. Try again." }, 409);
++  if (!order.outside_asset_key) return json({ error: "Print artwork is still being prepared. Try again." }, 409);
+   if (order.status !== "draft") return json({ error: "This order has already been sent to checkout." }, 409);
+ 
+   const provider = String(env.PRINT_PROVIDER || "hold").toLowerCase();
+@@ -288,16 +288,17 @@
+     .bind(hash, expires, new Date().toISOString(), orderId)
+     .run();
+   const base = env.PUBLIC_BASE_URL || "https://builttooffend.com";
+-  const make = (kind) => `${base}/api/print-asset/${encodeURIComponent(orderId)}/${encodeURIComponent(kind)}?token=${encodeURIComponent(token)}`;
+-  return { outsideUrl: make("outside"), insideUrl: make("inside") };
++  return {
++    printUrl: `${base}/api/print-asset/${encodeURIComponent(orderId)}/print?token=${encodeURIComponent(token)}`,
++  };
+ }
+ 
++
+ async function servePrintAsset(env, orderId, kind, url) {
+   if (!env.DB || !env.ASSET_BUCKET) return new Response("Storage unavailable", { status: 503 });
+-  if (!["outside", "inside"].includes(kind)) return new Response("Not found", { status: 404 });
++  if (!["outside", "inside", "print"].includes(kind)) return new Response("Not found", { status: 404 });
+   const token = url.searchParams.get("token") || "";
+   if (!token) return new Response("Forbidden", { status: 403 });
+-
+   const order = await env.DB.prepare("SELECT outside_asset_key,inside_asset_key,status,print_token_hash,print_token_expires_at FROM orders WHERE id=?")
+     .bind(orderId)
+     .first();
+@@ -305,31 +306,41 @@
+   if (!order.print_token_hash || Date.parse(order.print_token_expires_at || "") < Date.now()) return new Response("Expired", { status: 403 });
+   const actual = await sha256Hex(token);
+   if (!timingSafeStringEqual(actual, order.print_token_hash)) return new Response("Forbidden", { status: 403 });
+-
+-  const key = kind === "outside" ? order.outside_asset_key : order.inside_asset_key;
++  const key = kind === "inside" ? order.inside_asset_key : order.outside_asset_key;
+   if (!key) return new Response("Not found", { status: 404 });
+   const object = await env.ASSET_BUCKET.getWithMetadata(key, "arrayBuffer");
+   if (!object?.value) return new Response("Not found", { status: 404 });
+   return new Response(object.value, {
+     headers: {
+-      "content-type": object.metadata?.contentType || "image/png",
++      "content-type": object.metadata?.contentType || "image/jpeg",
+       "cache-control": "private, no-store",
+       "x-content-type-options": "nosniff",
+     },
+   });
+ }
+ 
++
+ async function prodigiProductDetails(env) {
+   const sku = env.PRODIGI_SKU || "GLOBAL-GRE-MOH-7X5-DIR";
+   const base = env.PRODIGI_ENV === "live" ? "https://api.prodigi.com" : "https://api.sandbox.prodigi.com";
+-  const response = await fetch(`${base}/v4.0/products?skus=${encodeURIComponent(sku)}`, {
++  const response = await fetch(`${base}/v4.0/products/${encodeURIComponent(sku)}`, {
+     headers: { "X-API-Key": env.PRODIGI_API_KEY },
+   });
+-  const payload = await response.json();
+-  if (!response.ok) throw new Error(`Prodigi product lookup failed: ${response.status}`);
+-  return payload;
++  const payload = await response.json().catch(() => ({}));
++  if (!response.ok || String(payload?.outcome || "").toLowerCase() !== "ok") {
++    throw new Error(`Prodigi product lookup failed: ${response.status}`);
++  }
++  const product = payload.product || payload;
++  if (!product?.printAreas?.default?.required) throw new Error("Prodigi greeting-card default print area is unavailable");
++  const gbVariant = (product.variants || []).find((v) => Array.isArray(v.shipsTo) && v.shipsTo.includes("GB"));
++  const size = gbVariant?.printAreaSizes?.default;
++  if (!size || Number(size.horizontalResolution) !== 6118 || Number(size.verticalResolution) !== 2161) {
++    throw new Error("Prodigi greeting-card print dimensions changed; checkout is held for artwork review");
++  }
++  return product;
+ }
+ 
++
+ function extractPrintAreas(productPayload) {
+   const candidates = [];
+   const seen = new Set();
+@@ -378,17 +389,15 @@
+ }
+ 
+ async function submitToProdigi(order, env) {
+-  if (env.PRODIGI_PROXY_URL) return submitViaProdigiProxy(order, env);
+   if (!env.PRODIGI_API_KEY) throw new Error("Prodigi API key is not configured");
+-  const { outsideUrl, insideUrl } = await createPrintAssetUrls(order.id, env);
+-  const product = await prodigiProductDetails(env);
+-  const areas = extractPrintAreas(product);
+-  if (!areas.length) throw new Error("Could not determine Prodigi greeting-card print areas. Check the configured SKU.");
+-  const outsideArea = areas.find((x) => /front|cover|outside|default/i.test(x)) || areas[0];
+-  const insideArea = areas.find((x) => /inside|inner/i.test(x));
+-  if (!insideArea) throw new Error(`The configured Prodigi SKU does not expose an inside print area (${areas.join(", ")}). Hold this order and choose the personalised-inside SKU before going live.`);
++  const { printUrl } = await createPrintAssetUrls(order.id, env);
++  await prodigiProductDetails(env);
+   const base = env.PRODIGI_ENV === "live" ? "https://api.prodigi.com" : "https://api.sandbox.prodigi.com";
+   const recipient = JSON.parse(order.shipping_json || "{}");
++  const address = recipient.address || {};
++  if (!recipient.name || !address.line1 || !address.postal_code || !address.country || !address.city) {
++    throw new Error("Customer delivery address is incomplete");
++  }
+   const payload = {
+     merchantReference: order.id,
+     idempotencyKey: order.id,
+@@ -397,12 +406,12 @@
+       name: recipient.name,
+       email: order.customer_email || undefined,
+       address: {
+-        line1: recipient.address?.line1,
+-        line2: recipient.address?.line2 || undefined,
+-        postalOrZipCode: recipient.address?.postal_code,
+-        countryCode: recipient.address?.country,
+-        townOrCity: recipient.address?.city,
+-        stateOrCounty: recipient.address?.state || undefined,
++        line1: address.line1,
++        line2: address.line2 || undefined,
++        postalOrZipCode: address.postal_code,
++        countryCode: address.country,
++        townOrCity: address.city,
++        stateOrCounty: address.state || undefined,
+       },
+     },
+     items: [{
+@@ -411,10 +420,7 @@
+       copies: 1,
+       sizing: "fillPrintArea",
+       recipientCost: { amount: ((order.price_pence + order.shipping_pence) / 100).toFixed(2), currency: "GBP" },
+-      assets: [
+-        { printArea: outsideArea, url: outsideUrl },
+-        { printArea: insideArea, url: insideUrl },
+-      ],
++      assets: [{ printArea: "default", url: printUrl }],
+     }],
+     metadata: { source: "builttooffend.com", brutality: String(order.brutality) },
+   };
+@@ -423,11 +429,17 @@
+     headers: { "X-API-Key": env.PRODIGI_API_KEY, "content-type": "application/json" },
+     body: JSON.stringify(payload),
+   });
+-  const result = await response.json();
+-  if (!response.ok || !result?.order?.id && !result?.id) throw new Error(`Prodigi order failed: ${result?.outcome || response.status}`);
+-  return { providerOrderId: result?.order?.id || result.id, raw: result };
++  const result = await response.json().catch(() => ({}));
++  const outcome = String(result?.outcome || "").toLowerCase();
++  const providerOrderId = result?.order?.id || result?.id || null;
++  if (!response.ok || !providerOrderId || outcome === "createdwithissues" || !["created", "onhold", "alreadyexists"].includes(outcome)) {
++    const issues = result?.order?.status?.issues || result?.issues || [];
++    throw new Error(`Prodigi order failed: ${result?.outcome || response.status}${issues.length ? ` — ${JSON.stringify(issues).slice(0, 500)}` : ""}`);
++  }
++  return { providerOrderId, raw: result };
+ }
+ 
++
+ async function fulfillOrder(orderId, env) {
+   if (!env.DB) return;
+   const order = await env.DB.prepare("SELECT * FROM orders WHERE id=?").bind(orderId).first();
+--- public/app.js
++++ public/app.js
+@@ -115,35 +115,47 @@
+ function drawWrapped(ctx,text,x,y,maxWidth,lineHeight,maxLines){const lines=wrapLines(ctx,text,maxWidth).slice(0,maxLines);for(const line of lines){ctx.fillText(line,x,y);y+=lineHeight}return y}
+ function roundedRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}
+ 
+-async function renderPrintBlob(front,inside,d,kind){
+-  const canvas=document.createElement('canvas');canvas.width=1500;canvas.height=2100;const ctx=canvas.getContext('2d');
+-  if(kind==='outside'){
+-    const grad=ctx.createLinearGradient(0,0,canvas.width,canvas.height);grad.addColorStop(0,'#090a0c');grad.addColorStop(.55,'#321047');grad.addColorStop(1,'#7a16a8');ctx.fillStyle=grad;ctx.fillRect(0,0,canvas.width,canvas.height);
+-    if(d.art==='photo'&&selectedPhoto){try{const img=await loadImage(selectedPhoto);const scale=Math.max(canvas.width/img.width,canvas.height/img.height);const w=img.width*scale,h=img.height*scale;ctx.drawImage(img,(canvas.width-w)/2,(canvas.height-h)/2,w,h);ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(0,0,canvas.width,canvas.height)}catch{}}
+-    ctx.fillStyle='#b9ff18';ctx.font='900 58px Arial';ctx.textAlign='center';ctx.fillText('BUILT TO OFFEND',canvas.width/2,155);
+-    ctx.fillStyle='#ffffff';ctx.font='900 120px Arial';ctx.textAlign='center';const lines=wrapLines(ctx,front.toUpperCase(),1220).slice(0,6);let y=canvas.height/2-(lines.length-1)*78;for(const line of lines){ctx.fillText(line,canvas.width/2,y);y+=150}
+-    ctx.fillStyle='#b9ff18';ctx.font='700 34px Arial';ctx.fillText('Say what you really mean.',canvas.width/2,canvas.height-150);
+-  } else {
+-    ctx.fillStyle='#f5f0e3';ctx.fillRect(0,0,canvas.width,canvas.height);
+-    ctx.fillStyle='#131313';ctx.textAlign='left';ctx.font='900 54px Arial';ctx.fillText('A MESSAGE FROM THE MONSTER',150,200);
+-    ctx.fillStyle='#6e168f';ctx.fillRect(150,245,280,16);
+-    ctx.fillStyle='#171717';ctx.font='600 50px Arial';drawWrapped(ctx,inside,150,390,1200,72,22);
+-    ctx.fillStyle='#6d6872';ctx.font='500 28px Arial';ctx.fillText('BUILT TO OFFEND • builttooffend.com',150,canvas.height-130);
+-  }
+-  return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Could not render print artwork')),'image/png',1));
++async function renderProdigiCardBlob(front,inside,d){
++  const W=6118,H=2161;
++  const cuts=[0,1529,3059,4588,6118];
++  const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
++  const ctx=canvas.getContext('2d');
++
++  const cover=async(x,w)=>{
++    const grad=ctx.createLinearGradient(x,0,x+w,H);grad.addColorStop(0,'#090a0c');grad.addColorStop(.55,'#321047');grad.addColorStop(1,'#7a16a8');ctx.fillStyle=grad;ctx.fillRect(x,0,w,H);
++    if(d.art==='photo'&&selectedPhoto){try{const img=await loadImage(selectedPhoto);const scale=Math.max(w/img.width,H/img.height);const dw=img.width*scale,dh=img.height*scale;ctx.drawImage(img,x+(w-dw)/2,(H-dh)/2,dw,dh);ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(x,0,w,H)}catch{}}
++    ctx.fillStyle='#b9ff18';ctx.textAlign='center';ctx.font='900 56px Arial';ctx.fillText('BUILT TO OFFEND',x+w/2,150);
++    ctx.fillStyle='#ffffff';ctx.font='900 116px Arial';const lines=wrapLines(ctx,front.toUpperCase(),w-250).slice(0,6);let y=H/2-(lines.length-1)*72;for(const line of lines){ctx.fillText(line,x+w/2,y);y+=145}
++    ctx.fillStyle='#b9ff18';ctx.font='700 32px Arial';ctx.fillText('Say what you really mean.',x+w/2,H-145);
++  };
++  const message=(x,w)=>{
++    ctx.fillStyle='#f5f0e3';ctx.fillRect(x,0,w,H);
++    ctx.fillStyle='#131313';ctx.textAlign='left';ctx.font='900 48px Arial';ctx.fillText('A MESSAGE FROM THE MONSTER',x+125,190);
++    ctx.fillStyle='#6e168f';ctx.fillRect(x+125,230,270,14);
++    ctx.fillStyle='#171717';ctx.font='600 46px Arial';drawWrapped(ctx,inside,x+125,365,w-250,67,23);
++    ctx.fillStyle='#6d6872';ctx.font='500 25px Arial';ctx.fillText('BUILT TO OFFEND • builttooffend.com',x+125,H-115);
++  };
++
++  // Prodigi requires one four-panel image. Duplicate each logical surface
++  // across its pair so left/right panel ordering cannot blank the card.
++  await cover(cuts[0],cuts[1]-cuts[0]);
++  await cover(cuts[1],cuts[2]-cuts[1]);
++  message(cuts[2],cuts[3]-cuts[2]);
++  message(cuts[3],cuts[4]-cuts[3]);
++  return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Could not render Prodigi print artwork')),'image/jpeg',0.94));
+ }
+ 
+ async function apiJson(path,options={}){const r=await fetch(path,options);let j={};try{j=await r.json()}catch{}if(!r.ok)throw new Error(j.error||`Request failed (${r.status})`);return j}
+-async function uploadAsset(orderId,token,kind,blob){return apiJson(`/api/order-asset?order_id=${encodeURIComponent(orderId)}&kind=${encodeURIComponent(kind)}`,{method:'PUT',headers:{'content-type':'image/png','x-order-token':token},body:blob})}
++async function uploadAsset(orderId,token,kind,blob){return apiJson(`/api/order-asset?order_id=${encodeURIComponent(orderId)}&kind=${encodeURIComponent(kind)}`,{method:'PUT',headers:{'content-type':'image/jpeg','x-order-token':token},body:blob})}
+ 
+ async function beginCheckout(article,v,d,button){
+   const front=$('.front-copy',article).textContent.trim(),inside=$('.inside-copy',article).textContent.trim();
+   const original=button.textContent;button.disabled=true;button.textContent='PREPARING PRINT ARTWORK…';
+   try{
+     const order=await apiJson('/api/orders',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({recipient:d.recipient,occasion:d.occasion,brutality:d.brutality,label:v.label,front,inside,art:d.art})});
+-    const [outside,insideBlob]=await Promise.all([renderPrintBlob(front,inside,d,'outside'),renderPrintBlob(front,inside,d,'inside')]);
++    const printBlob=await renderProdigiCardBlob(front,inside,d);
+     button.textContent='SECURING YOUR MONSTER…';
+-    await Promise.all([uploadAsset(order.orderId,order.uploadToken,'outside',outside),uploadAsset(order.orderId,order.uploadToken,'inside',insideBlob)]);
++    await uploadAsset(order.orderId,order.uploadToken,'print',printBlob);
+     button.textContent='OPENING SECURE CHECKOUT…';
+     const checkout=await apiJson('/api/checkout',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({orderId:order.orderId,uploadToken:order.uploadToken})});
+     location.href=checkout.checkoutUrl;
