@@ -1,0 +1,51 @@
+name: Verify Built To Offend Live
+
+on:
+  push:
+    branches: [built-to-offend-deploy]
+    paths:
+      - ".github/workflows/verify-bto-live.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for live custom domain to serve queued-sales release
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for attempt in $(seq 1 30); do
+            echo "Attempt $attempt"
+            config=$(curl -fsS --max-time 20 -H 'Cache-Control: no-cache' "https://builttooffend.com/api/config?verify=$(date +%s)" || true)
+            echo "$config"
+            if CONFIG_JSON="$config" node <<'NODE'
+          const raw = process.env.CONFIG_JSON || '';
+          try {
+            const cfg = JSON.parse(raw);
+            process.exit(cfg.checkoutReady === true && cfg.printer === 'yousaidit_queue' ? 0 : 1);
+          } catch { process.exit(1); }
+          NODE
+            then
+              ok=1
+              break
+            fi
+            sleep 10
+          done
+          test "$ok" = 1
+          health=$(curl -fsS --max-time 20 "https://builttooffend.com/api/health?verify=$(date +%s)")
+          echo "$health"
+          echo "$health" | grep -q '"ok":true'
+          echo "MAIN_HEADERS"
+          curl -fsSI https://builttooffend.com/ | head -12
+          echo "WWW_HEADERS"
+          curl -fsSI https://www.builttooffend.com/ | head -12
+          echo "COUK_HEADERS"
+          curl -fsSI https://builttooffend.co.uk/ | head -12
+          echo "WWW_COUK_HEADERS"
+          curl -fsSI https://www.builttooffend.co.uk/ | head -12
+          echo "READY: Built To Offend live checkout is serving You Said It queue mode."
