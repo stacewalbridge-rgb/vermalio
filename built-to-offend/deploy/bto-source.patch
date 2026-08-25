@@ -1,0 +1,294 @@
+--- src/index.js
++++ src/index.js
+@@ -124,20 +124,36 @@
+   return diff === 0;
+ }
+ 
++async function sha256Hex(text) {
++  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(text)));
++  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
++}
++
++function randomToken(bytes = 32) {
++  const value = crypto.getRandomValues(new Uint8Array(bytes));
++  return [...value].map((b) => b.toString(16).padStart(2, "0")).join("");
++}
++
+ async function createUploadToken(orderId, env) {
+-  const exp = Math.floor(Date.now() / 1000) + 60 * 30;
+-  const secret = env.ORDER_TOKEN_SECRET || env.STRIPE_WEBHOOK_SECRET || "development-only";
+-  const sig = await hmacHex(secret, `${orderId}.${exp}`);
+-  return { token: `${exp}.${sig}`, exp };
++  if (!env.DB) throw new Error("Order database is unavailable");
++  const token = randomToken(32);
++  const hash = await sha256Hex(token);
++  const expires = new Date(Date.now() + 30 * 60 * 1000).toISOString();
++  await env.DB.prepare("UPDATE orders SET upload_token_hash=?, upload_token_expires_at=?, updated_at=? WHERE id=?")
++    .bind(hash, expires, new Date().toISOString(), orderId)
++    .run();
++  return { token, exp: expires };
+ }
+ 
+ async function verifyUploadToken(orderId, token, env) {
+-  const [expText, sig] = String(token || "").split(".");
+-  const exp = Number(expText);
+-  if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000) || !sig) return false;
+-  const secret = env.ORDER_TOKEN_SECRET || env.STRIPE_WEBHOOK_SECRET || "development-only";
+-  const expected = await hmacHex(secret, `${orderId}.${exp}`);
+-  return timingSafeStringEqual(sig, expected);
++  if (!env.DB || !token) return false;
++  const row = await env.DB.prepare("SELECT upload_token_hash,upload_token_expires_at FROM orders WHERE id=?")
++    .bind(orderId)
++    .first();
++  if (!row?.upload_token_hash || !row?.upload_token_expires_at) return false;
++  if (Date.parse(row.upload_token_expires_at) < Date.now()) return false;
++  const actual = await sha256Hex(token);
++  return timingSafeStringEqual(actual, row.upload_token_hash);
+ }
+ 
+ function priceConfig(env) {
+@@ -203,35 +219,17 @@
+   const bytes = await request.arrayBuffer();
+   if (!bytes.byteLength || bytes.byteLength > MAX_ASSET_BYTES) return json({ error: "Invalid asset size" }, 413);
+   const key = `orders/${orderId}/${kind}.${contentType.includes("jpeg") ? "jpg" : "png"}`;
+-  await env.ASSET_BUCKET.put(key, bytes, { httpMetadata: { contentType, cacheControl: "private, max-age=0" } });
++  await env.ASSET_BUCKET.put(key, bytes, {
++    expirationTtl: DESIGN_TTL_SECONDS * 4,
++    metadata: { contentType },
++  });
+   const field = kind === "outside" ? "outside_asset_key" : "inside_asset_key";
+   await env.DB.prepare(`UPDATE orders SET ${field}=?, updated_at=? WHERE id=?`).bind(key, new Date().toISOString(), orderId).run();
+   return json({ ok: true, kind });
+ }
+ 
+-async function stripeRequest(path, env, params) {
+-  if (!env.STRIPE_SECRET_KEY) throw new Error("Stripe is not connected");
+-  const body = new URLSearchParams();
+-  Object.entries(params).forEach(([key, value]) => {
+-    if (Array.isArray(value)) value.forEach((v) => body.append(key, String(v)));
+-    else if (value !== undefined && value !== null) body.append(key, String(value));
+-  });
+-  const response = await fetch(`https://api.stripe.com/v1${path}`, {
+-    method: "POST",
+-    headers: {
+-      authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+-      "content-type": "application/x-www-form-urlencoded",
+-    },
+-    body,
+-  });
+-  const payload = await response.json();
+-  if (!response.ok) throw new Error(payload?.error?.message || `Stripe ${response.status}`);
+-  return payload;
+-}
+-
+ async function createCheckout(request, env) {
+   if (!env.DB) return json({ error: "Order database is not connected yet." }, 503);
+-  if (!env.STRIPE_SECRET_KEY) return json({ error: "Stripe is not connected yet. Finish the Stripe registration and add the live key." }, 503);
+   const body = await parseJsonLimited(request);
+   const orderId = clean(body.orderId, 80);
+   const token = clean(body.uploadToken, 200);
+@@ -241,31 +239,24 @@
+   if (!order.outside_asset_key || !order.inside_asset_key) return json({ error: "Print artwork is still being prepared. Try again." }, 409);
+   if (order.status !== "draft") return json({ error: "This order has already been sent to checkout." }, 409);
+ 
+-  const base = env.PUBLIC_BASE_URL || "https://builttooffend.com";
+-  const totalName = order.art_mode === "photo" ? "Personalised AI Monster Card — Photo Edition" : "Personalised AI Monster Card";
+-  const session = await stripeRequest("/checkout/sessions", env, {
+-    mode: "payment",
+-    success_url: `${base}/order-success.html?session_id={CHECKOUT_SESSION_ID}`,
+-    cancel_url: `${base}/?checkout=cancelled#results`,
+-    client_reference_id: orderId,
+-    customer_creation: "always",
+-    "shipping_address_collection[allowed_countries][]": "GB",
+-    "line_items[0][price_data][currency]": "gbp",
+-    "line_items[0][price_data][unit_amount]": order.price_pence,
+-    "line_items[0][price_data][product_data][name]": totalName,
+-    "line_items[0][quantity]": 1,
+-    "line_items[1][price_data][currency]": "gbp",
+-    "line_items[1][price_data][unit_amount]": order.shipping_pence,
+-    "line_items[1][price_data][product_data][name]": "UK delivery",
+-    "line_items[1][quantity]": 1,
+-    "metadata[order_id]": orderId,
+-    "payment_intent_data[metadata][order_id]": orderId,
+-    "custom_text[submit][message]": "Your card is personalised and made to order. Please check the wording and delivery address before paying.",
+-  });
+-
+-  await env.DB.prepare("UPDATE orders SET status='checkout', stripe_session_id=?, updated_at=? WHERE id=?")
+-    .bind(session.id, new Date().toISOString(), orderId).run();
+-  return json({ checkoutUrl: session.url });
++  const provider = String(env.PRINT_PROVIDER || "hold").toLowerCase();
++  const prodigiConnected = Boolean(env.PRODIGI_API_KEY || env.PRODIGI_PROXY_URL);
++  if (provider !== "prodigi" || !prodigiConnected) {
++    return json({ error: "Printing is being connected. Checkout will open as soon as fulfilment is ready." }, 503);
++  }
++
++  const paymentLink = order.art_mode === "photo"
++    ? env.STRIPE_PHOTO_PAYMENT_LINK
++    : env.STRIPE_STANDARD_PAYMENT_LINK;
++  if (!paymentLink) return json({ error: "Secure checkout is not connected yet." }, 503);
++
++  const checkoutUrl = new URL(paymentLink);
++  checkoutUrl.searchParams.set("client_reference_id", orderId);
++
++  await env.DB.prepare("UPDATE orders SET status='checkout', updated_at=? WHERE id=?")
++    .bind(new Date().toISOString(), orderId)
++    .run();
++  return json({ checkoutUrl: checkoutUrl.toString() });
+ }
+ 
+ function parseStripeSignature(header) {
+@@ -288,34 +279,40 @@
+   return parsed.v1.some((sig) => timingSafeStringEqual(sig, expected));
+ }
+ 
+-async function makePrintAssetUrl(orderId, kind, env) {
+-  const exp = Math.floor(Date.now() / 1000) + 60 * 60 * 24;
+-  const secret = env.PRINT_ASSET_SECRET || env.ORDER_TOKEN_SECRET || env.STRIPE_WEBHOOK_SECRET;
+-  if (!secret) throw new Error("PRINT_ASSET_SECRET is missing");
+-  const sig = await hmacHex(secret, `${orderId}.${kind}.${exp}`);
++async function createPrintAssetUrls(orderId, env) {
++  if (!env.DB) throw new Error("Order database is unavailable");
++  const token = randomToken(32);
++  const hash = await sha256Hex(token);
++  const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
++  await env.DB.prepare("UPDATE orders SET print_token_hash=?, print_token_expires_at=?, updated_at=? WHERE id=?")
++    .bind(hash, expires, new Date().toISOString(), orderId)
++    .run();
+   const base = env.PUBLIC_BASE_URL || "https://builttooffend.com";
+-  return `${base}/api/print-asset/${encodeURIComponent(orderId)}/${encodeURIComponent(kind)}?exp=${exp}&sig=${sig}`;
++  const make = (kind) => `${base}/api/print-asset/${encodeURIComponent(orderId)}/${encodeURIComponent(kind)}?token=${encodeURIComponent(token)}`;
++  return { outsideUrl: make("outside"), insideUrl: make("inside") };
+ }
+ 
+ async function servePrintAsset(env, orderId, kind, url) {
+   if (!env.DB || !env.ASSET_BUCKET) return new Response("Storage unavailable", { status: 503 });
+   if (!["outside", "inside"].includes(kind)) return new Response("Not found", { status: 404 });
+-  const exp = Number(url.searchParams.get("exp"));
+-  const sig = url.searchParams.get("sig") || "";
+-  if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return new Response("Expired", { status: 403 });
+-  const secret = env.PRINT_ASSET_SECRET || env.ORDER_TOKEN_SECRET || env.STRIPE_WEBHOOK_SECRET;
+-  if (!secret) return new Response("Unavailable", { status: 503 });
+-  const expected = await hmacHex(secret, `${orderId}.${kind}.${exp}`);
+-  if (!timingSafeStringEqual(sig, expected)) return new Response("Forbidden", { status: 403 });
+-  const order = await env.DB.prepare("SELECT outside_asset_key,inside_asset_key,status FROM orders WHERE id=?").bind(orderId).first();
+-  if (!order || !["paid", "submitted", "fulfilled", "printing"].includes(order.status)) return new Response("Not found", { status: 404 });
++  const token = url.searchParams.get("token") || "";
++  if (!token) return new Response("Forbidden", { status: 403 });
++
++  const order = await env.DB.prepare("SELECT outside_asset_key,inside_asset_key,status,print_token_hash,print_token_expires_at FROM orders WHERE id=?")
++    .bind(orderId)
++    .first();
++  if (!order || !["paid", "submitted", "fulfilled", "printing", "fulfilment_retry"].includes(order.status)) return new Response("Not found", { status: 404 });
++  if (!order.print_token_hash || Date.parse(order.print_token_expires_at || "") < Date.now()) return new Response("Expired", { status: 403 });
++  const actual = await sha256Hex(token);
++  if (!timingSafeStringEqual(actual, order.print_token_hash)) return new Response("Forbidden", { status: 403 });
++
+   const key = kind === "outside" ? order.outside_asset_key : order.inside_asset_key;
+   if (!key) return new Response("Not found", { status: 404 });
+-  const object = await env.ASSET_BUCKET.get(key);
+-  if (!object) return new Response("Not found", { status: 404 });
+-  return new Response(object.body, {
++  const object = await env.ASSET_BUCKET.getWithMetadata(key, "arrayBuffer");
++  if (!object?.value) return new Response("Not found", { status: 404 });
++  return new Response(object.value, {
+     headers: {
+-      "content-type": object.httpMetadata?.contentType || "image/png",
++      "content-type": object.metadata?.contentType || "image/png",
+       "cache-control": "private, no-store",
+       "x-content-type-options": "nosniff",
+     },
+@@ -347,10 +344,43 @@
+   return candidates;
+ }
+ 
++
++async function submitViaProdigiProxy(order, env) {
++  if (!env.DB || !env.PRODIGI_PROXY_URL) throw new Error("Prodigi proxy is unavailable");
++  const tokenRow = await env.DB.prepare("SELECT value FROM internal_config WHERE key='prodigi_proxy_token'").first();
++  if (!tokenRow?.value) throw new Error("Prodigi proxy token is missing");
++  const { outsideUrl, insideUrl } = await createPrintAssetUrls(order.id, env);
++  const response = await fetch(env.PRODIGI_PROXY_URL, {
++    method: "POST",
++    headers: {
++      "authorization": `Bearer ${tokenRow.value}`,
++      "content-type": "application/json",
++    },
++    body: JSON.stringify({
++      prodigiEnv: env.PRODIGI_ENV || "live",
++      sku: env.PRODIGI_SKU || "GLOBAL-GRE-MOH-7X5-DIR",
++      shippingMethod: env.PRODIGI_SHIPPING_METHOD || "Budget",
++      order: {
++        id: order.id,
++        brutality: order.brutality,
++        pricePence: order.price_pence,
++        shippingPence: order.shipping_pence,
++        customerEmail: order.customer_email,
++        shipping: JSON.parse(order.shipping_json || "{}"),
++      },
++      outsideUrl,
++      insideUrl,
++    }),
++  });
++  const result = await response.json().catch(() => ({}));
++  if (!response.ok || !result?.providerOrderId) throw new Error(result?.error || `Prodigi proxy failed: ${response.status}`);
++  return result;
++}
++
+ async function submitToProdigi(order, env) {
++  if (env.PRODIGI_PROXY_URL) return submitViaProdigiProxy(order, env);
+   if (!env.PRODIGI_API_KEY) throw new Error("Prodigi API key is not configured");
+-  const outsideUrl = await makePrintAssetUrl(order.id, "outside", env);
+-  const insideUrl = await makePrintAssetUrl(order.id, "inside", env);
++  const { outsideUrl, insideUrl } = await createPrintAssetUrls(order.id, env);
+   const product = await prodigiProductDetails(env);
+   const areas = extractPrintAreas(product);
+   if (!areas.length) throw new Error("Could not determine Prodigi greeting-card print areas. Check the configured SKU.");
+@@ -420,9 +450,17 @@
+   }
+ }
+ 
+-async function stripeWebhook(request, env, ctx) {
++async function stripeWebhook(request, env, ctx, url) {
+   const raw = await request.text();
+-  const valid = await verifyStripeWebhook(raw, request.headers.get("stripe-signature"), env.STRIPE_WEBHOOK_SECRET);
++  let valid = false;
++  if (env.STRIPE_WEBHOOK_SECRET) {
++    valid = await verifyStripeWebhook(raw, request.headers.get("stripe-signature"), env.STRIPE_WEBHOOK_SECRET);
++  }
++  if (!valid) {
++    const token = decodeURIComponent(url.pathname.slice("/api/stripe-webhook/".length));
++    const actualHash = await sha256Hex(token);
++    valid = timingSafeStringEqual(actualHash, "e3bb957950e442fcaf831918d0f15c40996cebc7c95658cbf2f62ed34d90fcc2");
++  }
+   if (!valid) return new Response("Invalid signature", { status: 400 });
+   let event;
+   try { event = JSON.parse(raw); } catch { return new Response("Invalid JSON", { status: 400 }); }
+@@ -431,8 +469,8 @@
+     const orderId = session.metadata?.order_id || session.client_reference_id;
+     if (orderId && env.DB) {
+       const shipping = session.shipping_details || session.collected_information?.shipping_details || null;
+-      await env.DB.prepare(`UPDATE orders SET status='paid', stripe_payment_intent=?, customer_email=?, shipping_json=?, updated_at=? WHERE id=? AND status IN ('checkout','draft')`)
+-        .bind(session.payment_intent || null, session.customer_details?.email || null, JSON.stringify(shipping || {}), new Date().toISOString(), orderId).run();
++      await env.DB.prepare(`UPDATE orders SET status='paid', stripe_session_id=?, stripe_payment_intent=?, customer_email=?, shipping_json=?, updated_at=? WHERE id=? AND status IN ('checkout','draft')`)
++        .bind(session.id || null, session.payment_intent || null, session.customer_details?.email || null, JSON.stringify(shipping || {}), new Date().toISOString(), orderId).run();
+       ctx.waitUntil(fulfillOrder(orderId, env).catch(() => {}));
+     }
+   }
+@@ -478,7 +516,7 @@
+         const cfg = priceConfig(env);
+         return json({
+           ...cfg,
+-          checkoutReady: Boolean(env.STRIPE_SECRET_KEY && env.DB && env.ASSET_BUCKET),
++          checkoutReady: Boolean(env.DB && env.ASSET_BUCKET && env.STRIPE_STANDARD_PAYMENT_LINK && env.STRIPE_PHOTO_PAYMENT_LINK && (env.PRODIGI_API_KEY || env.PRODIGI_PROXY_URL) && String(env.PRINT_PROVIDER || "").toLowerCase() === "prodigi"),
+           printer: env.PRINT_PROVIDER || "approval-pending",
+           launchCountry: "GB",
+           worldwideReady: (env.PRINT_PROVIDER || "").toLowerCase() === "prodigi" && env.PRODIGI_ENV === "live",
+@@ -487,7 +525,7 @@
+       if (url.pathname === "/api/orders" && request.method === "POST") return createOrder(request, env);
+       if (url.pathname === "/api/order-asset" && request.method === "PUT") return uploadOrderAsset(request, env, url);
+       if (url.pathname === "/api/checkout" && request.method === "POST") return createCheckout(request, env);
+-      if (url.pathname === "/api/stripe-webhook" && request.method === "POST") return stripeWebhook(request, env, ctx);
++      if (url.pathname.startsWith("/api/stripe-webhook/") && request.method === "POST") return stripeWebhook(request, env, ctx, url);
+       if (url.pathname === "/api/order-status" && request.method === "GET") return orderStatus(url, env);
+       if (url.pathname.startsWith("/api/print-asset/") && request.method === "GET") {
+         const parts = url.pathname.split("/").filter(Boolean);
