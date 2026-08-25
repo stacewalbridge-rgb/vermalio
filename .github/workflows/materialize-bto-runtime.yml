@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Extract runtime source
+      - name: Extract and harden runtime source
         shell: bash
         run: |
           set -euo pipefail
@@ -25,13 +25,75 @@ jobs:
           cd /tmp/bto-runtime/built-to-offend-production
           patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
           node "$GITHUB_WORKSPACE/.github/bto-prodigi-spread-fix.js"
+          python <<'PY'
+          from pathlib import Path
+          import json
+          p = Path('src/index.js')
+          s = p.read_text()
+          if 'async function retryPendingFulfilment' not in s:
+              marker = '\nasync function stripeWebhook(request, env, ctx, url) {'
+              retry = '''
+async function retryPendingFulfilment(env, limit = 12) {
+  if (!env.DB) return { checked: 0, submitted: 0, failed: 0 };
+  const query = await env.DB.prepare("SELECT id FROM orders WHERE status IN ('paid','fulfilment_retry') ORDER BY updated_at ASC LIMIT ?")
+    .bind(limit)
+    .all();
+  const rows = Array.isArray(query?.results) ? query.results : [];
+  let submitted = 0;
+  let failed = 0;
+  for (const row of rows) {
+    try {
+      await fulfillOrder(row.id, env);
+      submitted += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { checked: rows.length, submitted, failed };
+}
+'''
+              if marker not in s:
+                  raise SystemExit('stripe webhook marker missing')
+              s = s.replace(marker, retry + marker, 1)
+
+          s = s.replace('async function orderStatus(url, env) {', 'async function orderStatus(url, env, ctx) {', 1)
+          status_marker = '  if (!order) return json({ status: "processing" });\n'
+          retry_line = '  if (["paid", "fulfilment_retry"].includes(order.status) && ctx) ctx.waitUntil(fulfillOrder(order.id, env).catch(() => {}));\n'
+          if retry_line not in s:
+              if status_marker not in s:
+                  raise SystemExit('order status marker missing')
+              s = s.replace(status_marker, status_marker + retry_line, 1)
+          s = s.replace('return orderStatus(url, env);', 'return orderStatus(url, env, ctx);', 1)
+
+          export_marker = 'export default {\n  async fetch(request, env, ctx) {'
+          scheduled = '''export default {
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(retryPendingFulfilment(env).catch((error) => {
+      console.error(JSON.stringify({ event: "scheduled_fulfilment_retry_failed", message: String(error?.message || error) }));
+    }));
+  },
+  async fetch(request, env, ctx) {'''
+          if 'async scheduled(controller, env, ctx)' not in s:
+              if export_marker not in s:
+                  raise SystemExit('default export marker missing')
+              s = s.replace(export_marker, scheduled, 1)
+          p.write_text(s)
+
+          w = Path('wrangler.jsonc')
+          cfg = json.loads(w.read_text())
+          cfg['triggers'] = {'crons': ['*/5 * * * *']}
+          w.write_text(json.dumps(cfg, indent=2) + '\n')
+          PY
           node --check src/index.js
+          grep -q 'retryPendingFulfilment' src/index.js
+          grep -q 'async scheduled(controller, env, ctx)' src/index.js
+          grep -q '*/5 * * * *' wrangler.jsonc
           rm -rf .git node_modules
           git init -b bto-runtime-source
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add -A
-          git commit -m "Materialize Built To Offend runtime source"
+          git commit -m "Add automatic paid-order fulfilment recovery"
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force origin bto-runtime-source
         env:
