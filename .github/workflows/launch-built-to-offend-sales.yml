@@ -1,0 +1,158 @@
+name: Launch Built To Offend Sales
+
+on:
+  push:
+    branches: [built-to-offend-deploy]
+    paths:
+      - ".github/workflows/launch-built-to-offend-sales.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      BTO_DIR: ${{ github.workspace }}/.deploy/built-to-offend-production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build queued-sales release
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .deploy
+          mkdir -p .deploy
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 | base64 -d > .deploy/built-to-offend.tar.xz
+          tar -xJf .deploy/built-to-offend.tar.xz -C .deploy
+          cp built-to-offend/deploy/0002_secure_tokens.sql "$BTO_DIR/migrations/0002_secure_tokens.sql"
+          cd "$BTO_DIR"
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+
+          node <<'NODE'
+          const fs = require('fs');
+          const srcPath = 'src/index.js';
+          let src = fs.readFileSync(srcPath, 'utf8');
+
+          const oldGate = `  const provider = String(env.PRINT_PROVIDER || "hold").toLowerCase();\n  const prodigiConnected = Boolean(env.PRODIGI_API_KEY || env.PRODIGI_PROXY_URL);\n  if (provider !== "prodigi" || !prodigiConnected) {\n    return json({ error: "Printing is being connected. Checkout will open as soon as fulfilment is ready." }, 503);\n  }\n`;
+          const newGate = `  const provider = String(env.PRINT_PROVIDER || "yousaidit_queue").toLowerCase();\n  if (provider === "prodigi" && !(env.PRODIGI_API_KEY || env.PRODIGI_PROXY_URL)) {\n    return json({ error: "Automatic printer connection is unavailable." }, 503);\n  }\n`;
+          if (!src.includes(oldGate)) throw new Error('Expected checkout printer gate not found');
+          src = src.replace(oldGate, newGate);
+
+          const oldReady = `          checkoutReady: Boolean(env.DB && env.ASSET_BUCKET && env.STRIPE_STANDARD_PAYMENT_LINK && env.STRIPE_PHOTO_PAYMENT_LINK && (env.PRODIGI_API_KEY || env.PRODIGI_PROXY_URL) && String(env.PRINT_PROVIDER || "").toLowerCase() === "prodigi"),`;
+          const newReady = `          checkoutReady: Boolean(env.DB && env.ASSET_BUCKET && env.STRIPE_STANDARD_PAYMENT_LINK && env.STRIPE_PHOTO_PAYMENT_LINK),`;
+          if (!src.includes(oldReady)) throw new Error('Expected checkoutReady gate not found');
+          src = src.replace(oldReady, newReady);
+          fs.writeFileSync(srcPath, src);
+
+          const successPath = 'public/order-success.html';
+          let success = fs.readFileSync(successPath, 'utf8');
+          success = success.replace("awaiting_printer:['PAID — PRINT QUEUE HELD','Your order is safe. The fulfilment connection is temporarily holding this order for review.']", "awaiting_printer:['PAID — QUEUED FOR PRINT','Your order is confirmed and queued for UK print fulfilment.']");
+          fs.writeFileSync(successPath, success);
+
+          const cfgPath = 'wrangler.jsonc';
+          const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+          delete cfg.r2_buckets;
+          cfg.kv_namespaces = [{ binding: 'ASSET_BUCKET', id: 'KV_NAMESPACE_ID' }];
+          cfg.vars = {
+            ...(cfg.vars || {}),
+            PUBLIC_BASE_URL: 'https://builttooffend.com',
+            CARD_PRICE_PENCE: '499',
+            UK_SHIPPING_PENCE: '199',
+            PHOTO_ADDON_PENCE: '100',
+            STRIPE_STANDARD_PAYMENT_LINK: 'https://buy.stripe.com/14A4gA3IEfWa3O7a5J8so02',
+            STRIPE_PHOTO_PAYMENT_LINK: 'https://buy.stripe.com/00w8wQ92YcJY4Sb1zd8so03',
+            PRINT_PROVIDER: 'yousaidit_queue',
+            PRODIGI_ENV: 'live',
+            PRODIGI_SKU: 'GLOBAL-GRE-MOH-7X5-DIR',
+            PRODIGI_SHIPPING_METHOD: 'Budget'
+          };
+          delete cfg.vars.PRODIGI_PROXY_URL;
+          fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
+          NODE
+
+          npm install --no-audit --no-fund
+          node --check src/index.js
+          node --check public/app.js
+          npx wrangler deploy --dry-run --config wrangler.jsonc
+
+      - name: Authenticate to Cloudflare
+        working-directory: .deploy/built-to-offend-production
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+          export NO_COLOR=1 FORCE_COLOR=0
+          rm -f /tmp/cloudflare-device-login.log
+          set +e
+          (npx wrangler login --device --browser=false > /tmp/cloudflare-device-login.log 2>&1) &
+          login_pid=$!
+          set -e
+          sleep 8
+          printf '\nDeployment run: %s\n\n' "$RUN_URL" >> /tmp/cloudflare-device-login.log
+          gh issue create --title "Cloudflare approval required — Built To Offend SALES LIVE — run ${{ github.run_number }}" --body-file /tmp/cloudflare-device-login.log || true
+          set +e
+          wait "$login_pid"
+          rc=$?
+          set -e
+          cat /tmp/cloudflare-device-login.log || true
+          test "$rc" = 0
+          npx wrangler whoami
+
+      - name: Bind existing private storage and database
+        working-directory: .deploy/built-to-offend-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+          npx wrangler kv namespace list > /tmp/bto-kv-list.json
+          kv_id=$(node -e "const x=require('/tmp/bto-kv-list.json');const h=x.find(v=>v.title==='BTO_PRIVATE_ASSETS'||v.title==='built-to-offend-private-assets'||String(v.title||'').endsWith('-BTO_PRIVATE_ASSETS'));if(h)process.stdout.write(h.id)")
+          test -n "$kv_id"
+          KV_ID="$kv_id" node <<'NODE'
+          const fs=require('fs'); const p='wrangler.jsonc'; const cfg=JSON.parse(fs.readFileSync(p,'utf8')); cfg.kv_namespaces=[{binding:'ASSET_BUCKET',id:process.env.KV_ID}]; fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\n');
+          NODE
+
+          npx wrangler d1 list --json > /tmp/d1-list.json
+          db_id=$(node -e "const x=require('/tmp/d1-list.json');const h=x.find(v=>v.name==='built-to-offend-db');if(h)process.stdout.write(h.uuid||h.id||h.database_id||'')")
+          test -n "$db_id"
+          DB_ID="$db_id" node <<'NODE'
+          const fs=require('fs'); const p='wrangler.jsonc'; const cfg=JSON.parse(fs.readFileSync(p,'utf8')); cfg.d1_databases=[{binding:'DB',database_name:'built-to-offend-db',database_id:process.env.DB_ID}]; fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\n');
+          NODE
+
+          npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc
+
+      - name: Deploy live queued-sales shop
+        working-directory: .deploy/built-to-offend-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+          npx wrangler deploy --dry-run --config wrangler.jsonc
+          npx wrangler deploy --config wrangler.jsonc
+
+      - name: Verify live sales
+        shell: bash
+        run: |
+          set -euo pipefail
+          health=$(curl -fsS --max-time 20 https://builttooffend.com/api/health)
+          echo "$health" | grep -q '"ok":true'
+          config=$(curl -fsS --max-time 20 https://builttooffend.com/api/config)
+          echo "$config"
+          CONFIG_JSON="$config" node <<'NODE'
+          const cfg=JSON.parse(process.env.CONFIG_JSON);
+          if (cfg.checkoutReady !== true) throw new Error('Checkout is not live');
+          if (cfg.printer !== 'yousaidit_queue') throw new Error('You Said It queue is not active');
+          console.log('READY: Built To Offend live sales -> Stripe -> You Said It fulfilment queue');
+          NODE
+          curl -fsSI https://www.builttooffend.com/ | head -10
+          curl -fsSI https://builttooffend.co.uk/ | head -10
