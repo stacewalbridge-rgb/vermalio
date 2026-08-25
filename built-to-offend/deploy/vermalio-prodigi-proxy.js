@@ -26,6 +26,10 @@ function timingSafeStringEqual(a, b) {
   return diff === 0;
 }
 
+function prodigiApiKey(env) {
+  return env.PRODIGI_API_KEY || env.PRODIGI_LIVE_API_KEY || env.PRODIGI_KEY || null;
+}
+
 async function authorized(request) {
   const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
@@ -115,12 +119,13 @@ function recipientFrom(order) {
 
 export async function handleBtoProdigiProxy(request, env, url) {
   if (!(await authorized(request))) return json({ error: "forbidden" }, 403);
-  if (!env.PRODIGI_API_KEY) return json({ error: "Prodigi key is not configured on Vermalio" }, 503);
+  const apiKey = prodigiApiKey(env);
+  if (!apiKey) return json({ error: "Prodigi key is not configured on Vermalio" }, 503);
 
   if (request.method === "GET" && url.pathname.endsWith("/health")) {
     try {
       const sku = url.searchParams.get("sku") || DEFAULT_SKU;
-      const product = await productDetails(env.PRODIGI_API_KEY, sku);
+      const product = await productDetails(apiKey, sku);
       const { areas, outsideArea, insideArea } = printAreas(product);
       return json({ ok: true, environment: "live", sku, areas, outsideArea, insideArea });
     } catch (error) {
@@ -139,7 +144,7 @@ export async function handleBtoProdigiProxy(request, env, url) {
       throw new Error("Invalid Built To Offend print artwork URL");
     }
 
-    const product = await productDetails(env.PRODIGI_API_KEY, sku);
+    const product = await productDetails(apiKey, sku);
     const { outsideArea, insideArea } = printAreas(product);
     const recipient = recipientFrom(order);
     const totalPence = Number(order.pricePence || 0) + Number(order.shippingPence || 0);
@@ -173,7 +178,7 @@ export async function handleBtoProdigiProxy(request, env, url) {
     const response = await fetch(`${PRODIGI_BASE}/v4.0/orders`, {
       method: "POST",
       headers: {
-        "X-API-Key": env.PRODIGI_API_KEY,
+        "X-API-Key": apiKey,
         "content-type": "application/json",
       },
       body: JSON.stringify(payload),
