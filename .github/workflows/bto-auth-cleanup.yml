@@ -1,0 +1,30 @@
+name: BTO Auth Cleanup
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/bto-auth-cleanup.yml"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close stale BTO authentication issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for query in 'is:open "Cloudflare approval required"' 'is:open "encrypted handoff"'; do
+            gh issue list --repo "$REPO" --search "$query" --limit 100 --json number,title --jq '.[].number' | while read -r n; do
+              [ -n "$n" ] || continue
+              gh issue close "$n" --repo "$REPO" --reason not_planned --comment 'Closed automatically: superseded by the permanent no-device-code Built To Offend / Prodigi live path.' || true
+            done
+          done
+          echo 'AUTH_CLEANUP_OK'
