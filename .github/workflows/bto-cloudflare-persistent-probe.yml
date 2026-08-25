@@ -1,0 +1,38 @@
+name: BTO Cloudflare Persistent Probe
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/bto-cloudflare-persistent-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check persistent Cloudflare CI credential only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::error::No persistent Cloudflare API token is available to GitHub Actions under CLOUDFLARE_API_TOKEN, CF_API_TOKEN or CLOUDFLARE_TOKEN."
+            exit 2
+          fi
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "::error::No Cloudflare account id is available to GitHub Actions under CLOUDFLARE_ACCOUNT_ID, CF_ACCOUNT_ID or repository variable CLOUDFLARE_ACCOUNT_ID."
+            exit 3
+          fi
+          npx wrangler whoami
+          echo "PERSISTENT_CLOUDFLARE_AUTH_OK"
