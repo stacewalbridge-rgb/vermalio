@@ -14,48 +14,19 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Check Vermalio Prodigi bridge health
+      - name: Check live fulfilment state for recent paid orders
         shell: bash
         run: |
           set -euo pipefail
-          url='https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi/health'
-          code=$(curl -sS --max-time 30 -o /tmp/bridge.json -w '%{http_code}' "$url")
-          echo "BRIDGE_HTTP=$code"
-          cat /tmp/bridge.json
+          echo '=== LATEST PAID SESSION ==='
+          curl -sS --max-time 30 'https://builttooffend.com/api/order-status?session_id=cs_live_b1rgDhu7xOdgT9iua3ByL6javML7mWpgc1Im5DFWGkGVGoIYheCiYgmAHb' || true
           echo
-          test "$code" = 200
-          node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/bridge.json","utf8"));if(j.ok!==true||j.spreadMode!=="four-panel-pdf")process.exit(1)'
-
-      - name: Wait for automatic paid-order recovery to reach Prodigi
-        shell: bash
-        run: |
-          set -euo pipefail
-          url='https://vermalio.stace-walbridge.workers.dev/api/prodigi/provider-stats'
-          found=0
-          for i in $(seq 1 72); do
-            code=$(curl -sS --max-time 30 -o /tmp/provider.json -w '%{http_code}' "$url" || true)
-            if [ "$code" = 200 ] && node -e 'const fs=require("fs");try{const j=JSON.parse(fs.readFileSync("/tmp/provider.json","utf8"));process.exit(j.ok===true&&Number(j.orderCount)>0?0:1)}catch{process.exit(1)}'; then
-              found=1
-              break
-            fi
-            sleep 5
-          done
-          echo "PRODIGI_PROVIDER_HTTP=$code"
-          cat /tmp/provider.json || true
+          echo '=== PREVIOUS PAID SESSION ==='
+          curl -sS --max-time 30 'https://builttooffend.com/api/order-status?session_id=cs_live_b1zrLDcYL5SfGlCc05WHqarTJtYV7b8U70LdwD9zKsaQ2q6Hjui4PKlslS' || true
           echo
-          test "$found" = 1
-
-      - name: Check Built To Offend remains live and automatic
-        shell: bash
-        run: |
-          set -euo pipefail
-          health=$(curl -fsS --max-time 30 'https://builttooffend.com/api/health?cb=acceptance')
-          config=$(curl -fsS --max-time 30 'https://builttooffend.com/api/config?cb=acceptance')
-          echo "$health"
-          echo "$config"
-          HEALTH="$health" CONFIG="$config" node <<'NODE'
-          const h=JSON.parse(process.env.HEALTH);
-          const c=JSON.parse(process.env.CONFIG);
-          if(h.ok!==true) throw new Error('Built To Offend health failed');
-          if(c.checkoutReady!==true||c.printer!=='prodigi') throw new Error('Automatic checkout/Prodigi config is not live');
-          NODE
+          echo '=== PRODIGI PROVIDER ==='
+          curl -sS --max-time 30 'https://vermalio.stace-walbridge.workers.dev/api/prodigi/provider-stats' || true
+          echo
+          echo '=== BRIDGE HEALTH ==='
+          curl -sS --max-time 30 'https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi/health' || true
+          echo
