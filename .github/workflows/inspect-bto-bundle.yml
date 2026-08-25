@@ -15,7 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Unpack production build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build patched production source
         shell: bash
         run: |
           set -euo pipefail
@@ -24,59 +27,21 @@ jobs:
           cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 \
             | base64 -d > .inspect/built-to-offend.tar.xz
           tar -xJf .inspect/built-to-offend.tar.xz -C .inspect
-      - name: Probe complete order preparation path
+          cd .inspect/built-to-offend-production
+          cp "$GITHUB_WORKSPACE/built-to-offend/deploy/0002_secure_tokens.sql" migrations/0002_secure_tokens.sql
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          node "$GITHUB_WORKSPACE/.github/bto-seo-build.js"
+          node "$GITHUB_WORKSPACE/.github/bto-runtime-fix.js"
+          node --check src/index.js
+          node --check public/app.js
+          grep -q "built-to-offend-basket-v1" public/app.js
+          grep -q "addToBasket(article,v,d,select)" public/app.js
+          grep -q "request.method === \"OPTIONS\"" src/index.js
+          grep -q "API_CORS_HEADERS" src/index.js
+          echo 'BTO basket/API patched source validates successfully.'
+      - name: Show patched basket path
         shell: bash
         run: |
           set -euo pipefail
-          echo '===== CONFIG ====='
-          curl -fsS https://builttooffend.com/api/config
-          echo
-
-          order_json=$(curl -fsS --max-time 30 -X POST \
-            -H 'Origin: https://builttooffend.com' \
-            -H 'Content-Type: application/json' \
-            --data '{"recipient":"BTO-ASSET-SMOKE","occasion":"Birthday","brutality":5,"label":"SMOKE TEST","front":"BTO ASSET SMOKE TEST","inside":"Automated draft used only to verify that print artwork uploads work. It must never be fulfilled.","art":"monster"}' \
-            https://builttooffend.com/api/orders)
-          echo "$order_json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); console.log(JSON.stringify({ok:!!j.orderId,pricing:j.pricing}))})"
-          order_id=$(printf '%s' "$order_json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).orderId||''))")
-          token=$(printf '%s' "$order_json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).uploadToken||''))")
-          test -n "$order_id"
-          test -n "$token"
-
-          # Valid 1x1 PNG, sufficient to verify the Worker/KV upload endpoint.
-          printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z3ioAAAAASUVORK5CYII=' | base64 -d >/tmp/smoke.png
-
-          echo '===== OUTSIDE UPLOAD ====='
-          curl -fsS --max-time 30 -D /tmp/outside.headers -o /tmp/outside.body -X PUT \
-            -H 'Origin: https://builttooffend.com' \
-            -H 'Content-Type: image/png' \
-            -H "x-order-token: $token" \
-            --data-binary @/tmp/smoke.png \
-            "https://builttooffend.com/api/order-asset?order_id=$order_id&kind=outside"
-          cat /tmp/outside.headers
-          cat /tmp/outside.body
-          echo
-
-          echo '===== INSIDE UPLOAD ====='
-          curl -fsS --max-time 30 -D /tmp/inside.headers -o /tmp/inside.body -X PUT \
-            -H 'Origin: https://builttooffend.com' \
-            -H 'Content-Type: image/png' \
-            -H "x-order-token: $token" \
-            --data-binary @/tmp/smoke.png \
-            "https://builttooffend.com/api/order-asset?order_id=$order_id&kind=inside"
-          cat /tmp/inside.headers
-          cat /tmp/inside.body
-          echo
-
-          echo '===== CHECKOUT EXPECTED RESPONSE ====='
-          curl -sS --max-time 30 -D /tmp/checkout.headers -o /tmp/checkout.body -X POST \
-            -H 'Origin: https://builttooffend.com' \
-            -H 'Content-Type: application/json' \
-            --data "{\"orderId\":\"$order_id\",\"uploadToken\":\"$token\"}" \
-            https://builttooffend.com/api/checkout
-          cat /tmp/checkout.headers
-          cat /tmp/checkout.body
-          echo
-
-          echo '===== FULFILMENT SECTION ====='
-          curl -fsS https://builttooffend.com/ | sed -n '/id="fulfilment"/,/<\/section>/p' | head -250 || true
+          cd .inspect/built-to-offend-production
+          grep -n -E 'BASKET_KEY|addToBasket|checkoutBasketItem|miniCart|API_CORS_HEADERS|redirectHostIfNeeded' public/app.js src/index.js | head -120
