@@ -39,7 +39,7 @@ jobs:
           test -f .deploy/built-to-offend-production/src/index.js
           test -f .deploy/built-to-offend-production/public/index.html
 
-      - name: Make R2 optional for initial launch
+      - name: Bind private R2 artwork bucket in config
         working-directory: .deploy/built-to-offend-production
         shell: bash
         run: |
@@ -48,10 +48,9 @@ jobs:
           const fs = require('fs');
           const path = 'wrangler.jsonc';
           let s = fs.readFileSync(path, 'utf8');
-          s = s.replace(/,\s*"r2_buckets"\s*:\s*\[[\s\S]*?\](?=\s*})/m, '');
-          s = s.replace(/"r2_buckets"\s*:\s*\[[\s\S]*?\]\s*,/m, '');
-          const active = s.split('\n').filter(line => !line.trim().startsWith('//')).join('\n');
-          if (active.includes('"r2_buckets"')) throw new Error('Active R2 binding is still present');
+          const replacement = `"r2_buckets": [\n    { "binding": "ASSET_BUCKET", "bucket_name": "built-to-offend-private-assets" }\n  ]`;
+          if (!/"r2_buckets"\s*:\s*\[[\s\S]*?\]/m.test(s)) throw new Error('R2 binding block not found in wrangler config');
+          s = s.replace(/"r2_buckets"\s*:\s*\[[\s\S]*?\]/m, replacement);
           fs.writeFileSync(path, s);
           NODE
 
@@ -109,6 +108,21 @@ jobs:
           fi
           npx wrangler whoami
 
+      - name: Ensure private R2 bucket exists
+        working-directory: .deploy/built-to-offend-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+          if npx wrangler r2 bucket info built-to-offend-private-assets --json > /tmp/bto-r2.json 2>/dev/null; then
+            echo "Using existing R2 bucket built-to-offend-private-assets."
+            cat /tmp/bto-r2.json
+          else
+            echo "Creating private R2 bucket built-to-offend-private-assets."
+            npx wrangler r2 bucket create built-to-offend-private-assets
+            npx wrangler r2 bucket info built-to-offend-private-assets --json
+          fi
+
       - name: Bind existing D1 database
         working-directory: .deploy/built-to-offend-production
         shell: bash
@@ -134,7 +148,7 @@ jobs:
           NODE
           npx wrangler deploy --dry-run --config wrangler.jsonc
 
-      - name: Deploy new Worker and D1
+      - name: Deploy Worker, D1 and R2 binding
         working-directory: .deploy/built-to-offend-production
         shell: bash
         run: |
@@ -142,7 +156,7 @@ jobs:
           unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
           npx wrangler deploy --config wrangler.jsonc
 
-      - name: Apply D1 order migration
+      - name: Apply D1 order migrations
         working-directory: .deploy/built-to-offend-production
         shell: bash
         run: |
@@ -150,7 +164,7 @@ jobs:
           unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
           npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc
 
-      - name: Verify main site and redirects
+      - name: Verify main site, private storage binding and redirects
         shell: bash
         run: |
           set -euo pipefail
@@ -166,6 +180,7 @@ jobs:
             sleep 10
           done
           test "$ok" = 1
+          curl -fsS https://builttooffend.com/api/config
           curl -fsSI https://www.builttooffend.com/ | head -20
           curl -fsSI https://builttooffend.co.uk/ | head -20
           curl -fsSI https://www.builttooffend.co.uk/ | head -20
