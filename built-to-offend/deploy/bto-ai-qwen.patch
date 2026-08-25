@@ -1,0 +1,25 @@
+--- src/index.js
++++ src/index.js
+@@ -67,10 +67,11 @@
+ async function generateWithAI(input, env) {
+   const d = validateGenerationInput(input || {});
+   const user = `Recipient: ${d.recipient}\nAge: ${d.age || "not supplied"}\nOccasion: ${d.occasion}\nRelationship: ${d.relationship || "not supplied"}\nTone: ${d.tone || "sarcastic"}\nBrutality: ${d.brutality}/10\nAmmunition: ${d.ammo || "No specific ammunition supplied"}\nSomething they say: ${d.quote || "not supplied"}\nDo not mention: ${d.avoid || "nothing supplied"}\nCreate all three versions now. Version 1 should sit slightly below the requested brutality, version 2 should match it, version 3 should be the most outrageous version allowed at that requested level.`;
++  const prompt = `${SYSTEM}\n\nPURCHASER INPUT:\n${user}\n\nReturn only the requested JSON object, with no markdown fences or commentary.`;
+   const output = await env.AI.run(MODEL, {
+-    messages: [{ role: "system", content: SYSTEM }, { role: "user", content: user }],
++    prompt,
+     max_tokens: 1200,
+     temperature: 0.92,
+   });
+@@ -88,10 +89,11 @@
+ async function moderateFinal(front, inside, env) {
+   const combined = `Front: ${clean(front, 220)}\nInside: ${clean(inside, 2200)}`;
+   if (!env.AI) return { allowed: true, reason: "" };
+   try {
++    const prompt = `${FINAL_SAFETY_SYSTEM}\n\nCARD TO CLASSIFY:\n${combined}\n\nReturn only the requested JSON object.`;
+     const output = await env.AI.run(MODEL, {
+-      messages: [{ role: "system", content: FINAL_SAFETY_SYSTEM }, { role: "user", content: combined }],
++      prompt,
+       max_tokens: 100,
+       temperature: 0,
+     });
