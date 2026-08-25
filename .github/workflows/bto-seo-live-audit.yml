@@ -1,0 +1,51 @@
+name: BTO Live SEO Audit
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/bto-seo-live-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch live SEO surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -L --max-time 30 'https://builttooffend.com/?cb=seoaudit' -o /tmp/home.html
+          curl -fsS -L --max-time 30 'https://builttooffend.com/robots.txt?cb=seoaudit' -o /tmp/robots.txt
+          curl -fsS -L --max-time 30 'https://builttooffend.com/sitemap.xml?cb=seoaudit' -o /tmp/sitemap.xml
+          echo '--- ROBOTS ---'
+          cat /tmp/robots.txt
+          echo
+          echo '--- SITEMAP HEAD ---'
+          head -30 /tmp/sitemap.xml
+          echo
+          echo '--- HOME SEO SIGNALS ---'
+          node <<'NODE'
+          const fs=require('fs');
+          const h=fs.readFileSync('/tmp/home.html','utf8');
+          const pick=(re)=>((h.match(re)||[])[1]||'').trim();
+          console.log('TITLE='+pick(/<title[^>]*>([^<]*)<\/title>/i));
+          console.log('DESCRIPTION='+pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i));
+          console.log('CANONICAL='+pick(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']*)["']/i));
+          console.log('OG_TITLE='+pick(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']*)["']/i));
+          console.log('OG_DESCRIPTION='+pick(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']*)["']/i));
+          console.log('JSON_LD='+(h.includes('application/ld+json')?'present':'missing'));
+          console.log('H1_COUNT='+(h.match(/<h1\b/gi)||[]).length);
+          NODE
+
+      - name: Validate basic crawlability
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -qi 'sitemap:' /tmp/robots.txt
+          grep -qi 'builttooffend.com' /tmp/sitemap.xml
+          grep -qi '<title' /tmp/home.html
+          grep -qi 'name="description"' /tmp/home.html
