@@ -39,8 +39,10 @@ jobs:
           GENERATED="$generated" node -e 'const j=JSON.parse(process.env.GENERATED||"{}");if(!Array.isArray(j.versions)||j.versions.length<3||j.versions.slice(0,3).some(v=>!v.front||!v.inside))process.exit(1)'
 
           echo '== ORDER + SECURITY =='
-          order=$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' --data '{"recipient":"BTO-VERIFY","occasion":"Birthday","brutality":4,"label":"VERIFY","front":"BTO VERIFY TEST","inside":"Automated draft only. Never fulfil this order.","art":"monster"}' "$base/api/orders")
-          echo "$order"
+          order_code=$(curl -sS --max-time 30 -o /tmp/order.json -w '%{http_code}' -X POST -H 'content-type: application/json' --data '{"recipient":"BTO-VERIFY","occasion":"Birthday","brutality":4,"label":"VERIFY","front":"BTO VERIFY TEST","inside":"Automated draft only. Never fulfil this order.","art":"monster"}' "$base/api/orders")
+          order=$(cat /tmp/order.json)
+          echo "order HTTP $order_code: $order"
+          test "$order_code" = 200
           order_id=$(ORDER="$order" node -e 'const j=JSON.parse(process.env.ORDER);process.stdout.write(j.orderId||"")')
           token=$(ORDER="$order" node -e 'const j=JSON.parse(process.env.ORDER);process.stdout.write(j.uploadToken||"")')
           test -n "$order_id"; test -n "$token"
