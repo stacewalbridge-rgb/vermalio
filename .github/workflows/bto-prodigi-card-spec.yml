@@ -1,0 +1,72 @@
+name: BTO Prodigi Card Spec
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/bto-prodigi-card-spec.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Receive Prodigi key securely
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/p.pem >/dev/null 2>&1
+          openssl pkey -in /tmp/p.pem -pubout -out /tmp/pub.pem >/dev/null 2>&1
+          pub=$(base64 -w0 /tmp/pub.pem)
+          cat >/tmp/body.txt <<EOF
+          BTO_PRODIGI_PUBLIC_KEY_B64:$pub
+
+          Post only RSA-OAEP/SHA-256 encrypted ciphertext beginning PRODIGI_SECRET_CIPHERTEXT_B64:. Never post plaintext.
+          EOF
+          issue_url=$(gh issue create --title "BTO Prodigi card spec encrypted handoff — run ${{ github.run_number }}" --body-file /tmp/body.txt)
+          n=${issue_url##*/}
+          cipher=""
+          for i in $(seq 1 180); do
+            cipher=$(gh api "repos/$GITHUB_REPOSITORY/issues/$n/comments" --jq '.[].body' 2>/dev/null | sed -n 's/^PRODIGI_SECRET_CIPHERTEXT_B64://p' | tr -d '\r\n\t ' | tail -1 || true)
+            [ -n "$cipher" ] && break
+            sleep 2
+          done
+          test -n "$cipher"
+          printf '%s' "$cipher" | base64 -d >/tmp/key.enc
+          openssl pkeyutl -decrypt -inkey /tmp/p.pem -in /tmp/key.enc -out /tmp/key.txt -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256
+          K=$(cat /tmp/key.txt)
+          test ${#K} -ge 20
+          echo "::add-mask::$K"
+          rm -f /tmp/key.enc /tmp/p.pem /tmp/pub.pem /tmp/body.txt
+      - name: Inspect live card product specification
+        shell: bash
+        run: |
+          set -euo pipefail
+          K=$(cat /tmp/key.txt)
+          echo "::add-mask::$K"
+          code=$(curl -sS --max-time 30 -o /tmp/product.json -w '%{http_code}' -H "X-API-Key: $K" "https://api.prodigi.com/v4.0/products/GLOBAL-GRE-MOH-7X5-DIR")
+          test "$code" = 200
+          node <<'NODE'
+          const fs=require('fs');
+          const j=JSON.parse(fs.readFileSync('/tmp/product.json','utf8'));
+          if(String(j?.outcome||'').toLowerCase()!=='ok') throw new Error('Product lookup failed');
+          const p=j.product||j;
+          const out={
+            sku:p.sku,
+            description:p.description,
+            productDimensions:p.productDimensions,
+            printAreas:p.printAreas,
+            attributes:p.attributes,
+            variants:(p.variants||[]).filter(v=>Array.isArray(v.shipsTo)&&v.shipsTo.includes('GB')).slice(0,10).map(v=>({attributes:v.attributes,printAreaSizes:v.printAreaSizes,shipsToGB:true}))
+          };
+          console.log('BTO_PRODIGI_CARD_SPEC='+JSON.stringify(out));
+          NODE
+          rm -f /tmp/product.json /tmp/key.txt
