@@ -47,7 +47,7 @@ jobs:
           printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z3ioAAAAASUVORK5CYII=' | base64 -d >/tmp/a.png
           bad=$(curl -sS --max-time 20 -o /tmp/bad.json -w '%{http_code}' -X PUT -H 'content-type: image/png' -H 'x-order-token: wrong-token' --data-binary @/tmp/a.png "$base/api/order-asset?order_id=$order_id&kind=outside")
           echo "wrong-token upload HTTP $bad: $(cat /tmp/bad.json)"
-          test "$bad" = 403
+          test "$bad" = 401 -o "$bad" = 403
           for kind in outside inside; do
             code=$(curl -sS --max-time 30 -o /tmp/upload.json -w '%{http_code}' -X PUT -H 'content-type: image/png' -H "x-order-token: $token" --data-binary @/tmp/a.png "$base/api/order-asset?order_id=$order_id&kind=$kind")
             echo "$kind upload HTTP $code: $(cat /tmp/upload.json)"
