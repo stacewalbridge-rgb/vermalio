@@ -1,0 +1,21 @@
+name: BTO Live Render Inspect
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/bto-live-render-inspect.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show live print renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 30 'https://builttooffend.com/app.js?cb=render-inspect' -o /tmp/app.js
+          nl -ba /tmp/app.js | sed -n '95,155p'
