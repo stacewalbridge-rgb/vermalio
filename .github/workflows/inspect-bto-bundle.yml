@@ -24,39 +24,59 @@ jobs:
           cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 \
             | base64 -d > .inspect/built-to-offend.tar.xz
           tar -xJf .inspect/built-to-offend.tar.xz -C .inspect
-      - name: Probe live basket and frontend
+      - name: Probe complete order preparation path
         shell: bash
         run: |
-          set +e
-          echo '===== LIVE CONFIG ====='
-          curl -sS --max-time 20 -D - https://builttooffend.com/api/config
+          set -euo pipefail
+          echo '===== CONFIG ====='
+          curl -fsS https://builttooffend.com/api/config
           echo
-          echo '===== LIVE /api/orders PREFLIGHT ====='
-          curl -sS --max-time 20 -D - -o /dev/null -X OPTIONS \
-            -H 'Origin: https://builttooffend.com' \
-            -H 'Access-Control-Request-Method: POST' \
-            -H 'Access-Control-Request-Headers: content-type' \
-            https://builttooffend.com/api/orders
-          echo
-          echo '===== LIVE /api/orders POST ====='
-          curl -sS --max-time 30 -D - -X POST \
+
+          order_json=$(curl -fsS --max-time 30 -X POST \
             -H 'Origin: https://builttooffend.com' \
             -H 'Content-Type: application/json' \
-            --data '{"recipient":"BTO-SMOKE-TEST","occasion":"Birthday","brutality":5,"label":"SMOKE TEST","front":"BTO API SMOKE TEST","inside":"This is an automated Built To Offend API smoke test draft. It must never be fulfilled.","art":"monster"}' \
-            https://builttooffend.com/api/orders
+            --data '{"recipient":"BTO-ASSET-SMOKE","occasion":"Birthday","brutality":5,"label":"SMOKE TEST","front":"BTO ASSET SMOKE TEST","inside":"Automated draft used only to verify that print artwork uploads work. It must never be fulfilled.","art":"monster"}' \
+            https://builttooffend.com/api/orders)
+          echo "$order_json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); console.log(JSON.stringify({ok:!!j.orderId,pricing:j.pricing}))})"
+          order_id=$(printf '%s' "$order_json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).orderId||''))")
+          token=$(printf '%s' "$order_json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).uploadToken||''))")
+          test -n "$order_id"
+          test -n "$token"
+
+          # Valid 1x1 PNG, sufficient to verify the Worker/KV upload endpoint.
+          printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z3ioAAAAASUVORK5CYII=' | base64 -d >/tmp/smoke.png
+
+          echo '===== OUTSIDE UPLOAD ====='
+          curl -fsS --max-time 30 -D /tmp/outside.headers -o /tmp/outside.body -X PUT \
+            -H 'Origin: https://builttooffend.com' \
+            -H 'Content-Type: image/png' \
+            -H "x-order-token: $token" \
+            --data-binary @/tmp/smoke.png \
+            "https://builttooffend.com/api/order-asset?order_id=$order_id&kind=outside"
+          cat /tmp/outside.headers
+          cat /tmp/outside.body
           echo
-          echo '===== LIVE INDEX SCRIPT REFERENCES ====='
-          curl -fsS --max-time 20 https://builttooffend.com/ | grep -n -E 'app\\.js|cart|basket|ORDER THIS ONE' | head -100 || true
+
+          echo '===== INSIDE UPLOAD ====='
+          curl -fsS --max-time 30 -D /tmp/inside.headers -o /tmp/inside.body -X PUT \
+            -H 'Origin: https://builttooffend.com' \
+            -H 'Content-Type: image/png' \
+            -H "x-order-token: $token" \
+            --data-binary @/tmp/smoke.png \
+            "https://builttooffend.com/api/order-asset?order_id=$order_id&kind=inside"
+          cat /tmp/inside.headers
+          cat /tmp/inside.body
           echo
-          echo '===== LIVE APP.JS ====='
-          curl -fsS --max-time 20 https://builttooffend.com/app.js || true
-      - name: Check public domains
-        shell: bash
-        run: |
-          set +e
-          for host in builttooffend.com www.builttooffend.com builttooffend.co.uk www.builttooffend.co.uk; do
-            echo "===== $host ====="
-            curl -sSIL --max-time 20 "https://$host/" | head -20
-            curl -sS --max-time 20 -D - "https://$host/api/health" | head -30
-          done
-          exit 0
+
+          echo '===== CHECKOUT EXPECTED RESPONSE ====='
+          curl -sS --max-time 30 -D /tmp/checkout.headers -o /tmp/checkout.body -X POST \
+            -H 'Origin: https://builttooffend.com' \
+            -H 'Content-Type: application/json' \
+            --data "{\"orderId\":\"$order_id\",\"uploadToken\":\"$token\"}" \
+            https://builttooffend.com/api/checkout
+          cat /tmp/checkout.headers
+          cat /tmp/checkout.body
+          echo
+
+          echo '===== FULFILMENT SECTION ====='
+          curl -fsS https://builttooffend.com/ | sed -n '/id="fulfilment"/,/<\/section>/p' | head -250 || true
