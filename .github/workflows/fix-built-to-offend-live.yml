@@ -1,0 +1,259 @@
+name: Repair Built To Offend Live
+
+on:
+  push:
+    branches: [built-to-offend-deploy]
+    paths:
+      - ".github/workflows/fix-built-to-offend-live.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: "false"
+      BTO_DIR: ${{ github.workspace }}/.repair/built-to-offend-production
+      PRODIGI_PROXY_URL: https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi
+      PRODIGI_SKU: GLOBAL-GRE-MOH-7X5-DIR
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build repaired shop
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .repair
+          mkdir -p .repair
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 \
+            | base64 -d > .repair/built-to-offend.tar.xz
+          tar -xJf .repair/built-to-offend.tar.xz -C .repair
+          cp built-to-offend/deploy/0002_secure_tokens.sql "$BTO_DIR/migrations/0002_secure_tokens.sql"
+          cd "$BTO_DIR"
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          node "$GITHUB_WORKSPACE/.github/bto-seo-build.js"
+          node "$GITHUB_WORKSPACE/.github/bto-runtime-fix.js"
+          npm install --no-audit --no-fund
+          node --check src/index.js
+          node --check public/app.js
+          grep -q "built-to-offend-basket-v1" public/app.js
+          grep -q "addToBasket(article,v,d,select)" public/app.js
+          grep -q "API_CORS_HEADERS" src/index.js
+
+      - name: Authenticate to Cloudflare
+        working-directory: .repair/built-to-offend-production
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "Using stored Cloudflare deployment credentials."
+            npx wrangler whoami
+            exit 0
+          fi
+
+          unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+          export NO_COLOR=1 FORCE_COLOR=0
+          rm -f /tmp/cloudflare-device-login.log
+          set +e
+          (npx wrangler login --device --browser=false >/tmp/cloudflare-device-login.log 2>&1) &
+          login_pid=$!
+          set -e
+
+          for poll in $(seq 1 45); do
+            if grep -q 'enter the code' /tmp/cloudflare-device-login.log 2>/dev/null; then break; fi
+            sleep 1
+          done
+          grep -q 'enter the code' /tmp/cloudflare-device-login.log
+          printf '\nDeployment run: %s\n' "$RUN_URL" >>/tmp/cloudflare-device-login.log
+          gh issue create --title "Cloudflare approval required — Built To Offend repair — run ${{ github.run_number }}" --body-file /tmp/cloudflare-device-login.log || true
+
+          set +e
+          wait "$login_pid"
+          rc=$?
+          set -e
+          cat /tmp/cloudflare-device-login.log || true
+          test "$rc" = 0
+          npx wrangler whoami
+
+      - name: Bind Built To Offend storage and database
+        working-directory: .repair/built-to-offend-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler kv namespace list >/tmp/bto-kv.json
+          npx wrangler d1 list --json >/tmp/bto-d1.json
+
+          node <<'NODE'
+          const fs=require('fs');
+          const kv=JSON.parse(fs.readFileSync('/tmp/bto-kv.json','utf8'));
+          const kvHit=kv.find(x=>x.title==='BTO_PRIVATE_ASSETS'||x.title==='built-to-offend-private-assets'||String(x.title||'').endsWith('-BTO_PRIVATE_ASSETS'));
+          if(!kvHit?.id) throw new Error('Built To Offend private artwork KV namespace was not found');
+          const d1=JSON.parse(fs.readFileSync('/tmp/bto-d1.json','utf8'));
+          const db=d1.find(x=>x.name==='built-to-offend-db');
+          const dbid=db?.uuid||db?.id||db?.database_id;
+          if(!dbid) throw new Error('built-to-offend-db was not found');
+          const p='wrangler.jsonc';
+          const cfg=JSON.parse(fs.readFileSync(p,'utf8'));
+          delete cfg.r2_buckets;
+          cfg.kv_namespaces=[{binding:'ASSET_BUCKET',id:kvHit.id}];
+          cfg.d1_databases=[{binding:'DB',database_name:'built-to-offend-db',database_id:dbid}];
+          cfg.vars={
+            ...(cfg.vars||{}),
+            PUBLIC_BASE_URL:'https://builttooffend.com',
+            CARD_PRICE_PENCE:'499',
+            UK_SHIPPING_PENCE:'199',
+            PHOTO_ADDON_PENCE:'100',
+            STRIPE_STANDARD_PAYMENT_LINK:'https://buy.stripe.com/14A4gA3IEfWa3O7a5J8so02',
+            STRIPE_PHOTO_PAYMENT_LINK:'https://buy.stripe.com/00w8wQ92YcJY4Sb1zd8so03',
+            PRINT_PROVIDER:'hold',
+            PRODIGI_ENV:'live',
+            PRODIGI_SKU:'GLOBAL-GRE-MOH-7X5-DIR',
+            PRODIGI_SHIPPING_METHOD:'Budget'
+          };
+          delete cfg.vars.PRODIGI_PROXY_URL;
+          fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\n');
+          NODE
+
+          npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc
+
+      - name: Prepare current Vermalio bridge without removing Durable Objects
+        id: bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/vermalio-live
+          git fetch --depth=1 origin main:refs/remotes/origin/main
+          git worktree add --detach /tmp/vermalio-live origin/main
+          cd /tmp/vermalio-live
+          npm install --no-audit --no-fund
+
+          # The live Vermalio Worker already owns BTO_ORDER_STORE. Main preserves
+          # and exports BtoOrderStore, unlike the stale branch that caused code 10064.
+          grep -q 'export class BtoOrderStore' src/index.js
+          grep -q '"class_name": "BtoOrderStore"' wrangler.jsonc
+
+          npx wrangler secret list --config wrangler.jsonc >/tmp/vermalio-secrets.json
+          if node <<'NODE'
+          const fs=require('fs');
+          const list=JSON.parse(fs.readFileSync('/tmp/vermalio-secrets.json','utf8'));
+          const names=new Set(list.map(x=>x.name));
+          process.exit(['PRODIGI_API_KEY','PRODIGI_LIVE_API_KEY','PRODIGI_KEY'].some(x=>names.has(x))?0:1);
+          NODE
+          then
+            echo 'has_prodigi=true' >> "$GITHUB_OUTPUT"
+            echo 'Prodigi credential is present on Vermalio.'
+          else
+            echo 'has_prodigi=false' >> "$GITHUB_OUTPUT"
+            echo 'Prodigi credential is not present; basket will deploy but checkout remains held.'
+          fi
+
+      - name: Deploy and validate Prodigi bridge
+        id: prodigi
+        if: steps.bridge.outputs.has_prodigi == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          proxy_token=$(openssl rand -hex 32)
+          proxy_hash=$(printf '%s' "$proxy_token" | sha256sum | awk '{print $1}')
+
+          cp "$GITHUB_WORKSPACE/built-to-offend/deploy/vermalio-prodigi-proxy.js" /tmp/vermalio-live/src/bto-prodigi-proxy.js
+          PROXY_HASH="$proxy_hash" node <<'NODE'
+          const fs=require('fs');
+          const modulePath='/tmp/vermalio-live/src/bto-prodigi-proxy.js';
+          let mod=fs.readFileSync(modulePath,'utf8').replace('__BTO_PROXY_TOKEN_HASH__',process.env.PROXY_HASH);
+          if(mod.includes('__BTO_PROXY_TOKEN_HASH__')) throw new Error('Proxy hash replacement failed');
+          fs.writeFileSync(modulePath,mod);
+
+          const p='/tmp/vermalio-live/src/index.js';
+          let s=fs.readFileSync(p,'utf8');
+          const imp='import { handleBtoProdigiProxy } from "./bto-prodigi-proxy.js";\n';
+          if(!s.includes(imp.trim()))s=imp+s;
+          const exportPos=s.indexOf('export default {');
+          const marker='    const url = new URL(request.url);\n';
+          const markerPos=s.indexOf(marker,exportPos);
+          if(exportPos<0||markerPos<0)throw new Error('Vermalio route marker not found');
+          const route='    if (url.pathname.startsWith("/api/internal/bto/prodigi")) {\n      return handleBtoProdigiProxy(request, env, url);\n    }\n\n';
+          if(!s.includes(route)){
+            const at=markerPos+marker.length;
+            s=s.slice(0,at)+route+s.slice(at);
+          }
+          fs.writeFileSync(p,s);
+          NODE
+
+          cd /tmp/vermalio-live
+          node --check src/index.js
+          node --check src/bto-prodigi-proxy.js
+          grep -q 'export class BtoOrderStore' src/index.js
+          npx wrangler deploy --dry-run --config wrangler.jsonc
+          npx wrangler deploy --config wrangler.jsonc
+
+          code=$(curl -sS --max-time 30 -o /tmp/prodigi-health.json -w '%{http_code}' \
+            -H "Authorization: Bearer $proxy_token" \
+            "$PRODIGI_PROXY_URL/health?environment=live&sku=$PRODIGI_SKU")
+          cat /tmp/prodigi-health.json
+          test "$code" = 200
+          node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/prodigi-health.json","utf8"));if(j.ok!==true||j.environment!=="live")process.exit(1)'
+
+          PROXY_TOKEN="$proxy_token" node <<'NODE'
+          const fs=require('fs');
+          const token=process.env.PROXY_TOKEN;
+          if(!/^[0-9a-f]{64}$/.test(token))throw new Error('Invalid proxy token');
+          const now=new Date().toISOString();
+          fs.writeFileSync('/tmp/bto-proxy.sql',`INSERT INTO internal_config(key,value,updated_at) VALUES('prodigi_proxy_token','${token}','${now}') ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at;\n`,{mode:0o600});
+          NODE
+
+          cd "$BTO_DIR"
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --file /tmp/bto-proxy.sql >/dev/null
+          rm -f /tmp/bto-proxy.sql /tmp/prodigi-health.json
+
+          PRODIGI_PROXY_URL="$PRODIGI_PROXY_URL" node <<'NODE'
+          const fs=require('fs');
+          const p='wrangler.jsonc';
+          const cfg=JSON.parse(fs.readFileSync(p,'utf8'));
+          cfg.vars=cfg.vars||{};
+          cfg.vars.PRINT_PROVIDER='prodigi';
+          cfg.vars.PRODIGI_ENV='live';
+          cfg.vars.PRODIGI_PROXY_URL=process.env.PRODIGI_PROXY_URL;
+          fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\n');
+          NODE
+          echo 'ready=true' >> "$GITHUB_OUTPUT"
+
+      - name: Deploy repaired Built To Offend Worker and assets
+        working-directory: .repair/built-to-offend-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check src/index.js
+          node --check public/app.js
+          npx wrangler deploy --dry-run --config wrangler.jsonc
+          npx wrangler deploy --config wrangler.jsonc
+
+      - name: Verify live basket and API
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for attempt in $(seq 1 20); do
+            if curl -fsS --max-time 20 https://builttooffend.com/app.js | grep -q 'built-to-offend-basket-v1'; then ok=1; break; fi
+            sleep 5
+          done
+          test "$ok" = 1
+          curl -fsS https://builttooffend.com/api/health | grep -q '"ok":true'
+          config=$(curl -fsS https://builttooffend.com/api/config)
+          echo "$config"
+          if [ "${{ steps.prodigi.outputs.ready }}" = "true" ]; then
+            CONFIG_JSON="$config" node -e 'const c=JSON.parse(process.env.CONFIG_JSON);if(c.checkoutReady!==true||c.printer!=="prodigi")process.exit(1)'
+          fi
+          echo 'LIVE: basket add is local and working; API is healthy.'
