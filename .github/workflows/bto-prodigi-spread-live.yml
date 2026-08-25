@@ -1,0 +1,143 @@
+name: BTO Prodigi Spread Live
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/bto-prodigi-spread-live.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      BTO_DIR: ${{ github.workspace }}/.deploy/built-to-offend-production
+      PRODIGI_SKU: GLOBAL-GRE-MOH-7X5-DIR
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Receive Prodigi key securely
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/p.pem >/dev/null 2>&1
+          openssl pkey -in /tmp/p.pem -pubout -out /tmp/pub.pem >/dev/null 2>&1
+          pub=$(base64 -w0 /tmp/pub.pem)
+          printf 'BTO_PRODIGI_PUBLIC_KEY_B64:%s\n\nPost only RSA-OAEP/SHA-256 encrypted ciphertext beginning PRODIGI_SECRET_CIPHERTEXT_B64:. Never post plaintext.\n' "$pub" >/tmp/body.txt
+          issue_url=$(gh issue create --title "BTO Prodigi spread encrypted handoff — run ${{ github.run_number }}" --body-file /tmp/body.txt)
+          issue_number=${issue_url##*/}
+          cipher=""
+          for i in $(seq 1 180); do
+            cipher=$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue_number/comments" --jq '.[].body' 2>/dev/null | sed -n 's/^PRODIGI_SECRET_CIPHERTEXT_B64://p' | tr -d '\r\n\t ' | tail -1 || true)
+            [ -n "$cipher" ] && break
+            sleep 2
+          done
+          test -n "$cipher"
+          printf '%s' "$cipher" | base64 -d >/tmp/key.enc
+          openssl pkeyutl -decrypt -inkey /tmp/p.pem -in /tmp/key.enc -out /tmp/prodigi-key.txt -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256
+          K=$(cat /tmp/prodigi-key.txt); test ${#K} -ge 20; echo "::add-mask::$K"
+          rm -f /tmp/key.enc /tmp/p.pem /tmp/pub.pem /tmp/body.txt
+
+      - name: Authenticate to Cloudflare
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          export NO_COLOR=1 FORCE_COLOR=0
+          (npx wrangler login --device --browser=false >/tmp/cf.log 2>&1) & pid=$!
+          for i in $(seq 1 45); do grep -q 'enter the code' /tmp/cf.log 2>/dev/null && break; sleep 1; done
+          grep -q 'enter the code' /tmp/cf.log
+          printf '\nDeployment run: %s\n' "$RUN_URL" >>/tmp/cf.log
+          gh issue create --title "Cloudflare approval required — BTO PRODIGI SPREAD LIVE — run ${{ github.run_number }}" --body-file /tmp/cf.log || true
+          set +e; wait "$pid"; rc=$?; set -e
+          cat /tmp/cf.log || true
+          test "$rc" = 0
+          npx wrangler whoami
+
+      - name: Build, validate and deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .deploy && mkdir -p .deploy
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 | base64 -d > .deploy/bto.tar.xz
+          tar -xJf .deploy/bto.tar.xz -C .deploy
+          cp built-to-offend/deploy/0002_secure_tokens.sql "$BTO_DIR/migrations/0002_secure_tokens.sql"
+          cd "$BTO_DIR"
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          node "$GITHUB_WORKSPACE/.github/bto-seo-build.js"
+          node "$GITHUB_WORKSPACE/.github/bto-prodigi-spread-fix.js"
+          npm install --no-audit --no-fund
+          node --check src/index.js
+          node --check public/app.js
+
+          npx wrangler kv namespace list >/tmp/kv.json
+          npx wrangler d1 list --json >/tmp/d1.json
+          node <<'NODE'
+          const fs=require('fs');
+          const kv=JSON.parse(fs.readFileSync('/tmp/kv.json','utf8'));
+          const hit=kv.find(x=>x.title==='BTO_PRIVATE_ASSETS'||x.title==='built-to-offend-private-assets'||String(x.title||'').endsWith('-BTO_PRIVATE_ASSETS'));
+          if(!hit?.id) throw new Error('BTO private KV missing');
+          const d1=JSON.parse(fs.readFileSync('/tmp/d1.json','utf8'));
+          const db=d1.find(x=>x.name==='built-to-offend-db');
+          const dbid=db?.uuid||db?.id||db?.database_id;
+          if(!dbid) throw new Error('BTO D1 missing');
+          const p='wrangler.jsonc';
+          const cfg=JSON.parse(fs.readFileSync(p,'utf8'));
+          delete cfg.r2_buckets;
+          cfg.kv_namespaces=[{binding:'ASSET_BUCKET',id:hit.id}];
+          cfg.d1_databases=[{binding:'DB',database_name:'built-to-offend-db',database_id:dbid}];
+          cfg.vars={...(cfg.vars||{}),PUBLIC_BASE_URL:'https://builttooffend.com',CARD_PRICE_PENCE:'499',UK_SHIPPING_PENCE:'199',PHOTO_ADDON_PENCE:'100',STRIPE_STANDARD_PAYMENT_LINK:'https://buy.stripe.com/14A4gA3IEfWa3O7a5J8so02',STRIPE_PHOTO_PAYMENT_LINK:'https://buy.stripe.com/00w8wQ92YcJY4Sb1zd8so03',PRINT_PROVIDER:'prodigi',PRODIGI_ENV:'live',PRODIGI_SKU:'GLOBAL-GRE-MOH-7X5-DIR',PRODIGI_SHIPPING_METHOD:'Budget'};
+          delete cfg.vars.PRODIGI_PROXY_URL;
+          fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\n');
+          NODE
+
+          K=$(cat /tmp/prodigi-key.txt); echo "::add-mask::$K"
+          code=$(curl -sS --max-time 30 -o /tmp/product.json -w '%{http_code}' -H "X-API-Key: $K" "https://api.prodigi.com/v4.0/products/$PRODIGI_SKU")
+          test "$code" = 200
+          node <<'NODE'
+          const fs=require('fs');
+          const j=JSON.parse(fs.readFileSync('/tmp/product.json','utf8'));
+          if(String(j?.outcome||'').toLowerCase()!=='ok') throw new Error('Prodigi live key/SKU validation failed');
+          const p=j.product||j;
+          const size=p?.variants?.[0]?.printAreaSizes?.default;
+          if(!size) throw new Error('Prodigi default print area missing');
+          if(Number(size.horizontalResolution)!==6118||Number(size.verticalResolution)!==2161) throw new Error(`Unexpected Prodigi template size ${size.horizontalResolution}x${size.verticalResolution}`);
+          if(!p?.printAreas?.default) throw new Error('Prodigi default print area missing from product schema');
+          console.log('Validated Prodigi live card: default 6118x2161 single spread');
+          NODE
+          rm -f /tmp/product.json
+
+          printf '%s' "$K" | npx wrangler secret put PRODIGI_API_KEY --config wrangler.jsonc >/tmp/secret.log 2>&1
+          unset K
+          rm -f /tmp/prodigi-key.txt /tmp/secret.log
+          npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc
+          npx wrangler deploy --dry-run --config wrangler.jsonc
+          npx wrangler deploy --config wrangler.jsonc
+
+      - name: Verify live
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for i in $(seq 1 24); do
+            config=$(curl -fsS --max-time 20 "https://builttooffend.com/api/config?cb=$(date +%s%N)" || true)
+            if CONFIG_JSON="$config" node -e 'const c=JSON.parse(process.env.CONFIG_JSON||"{}");process.exit(c.checkoutReady===true&&c.printer==="prodigi"?0:1)' 2>/dev/null; then ok=1; break; fi
+            sleep 5
+          done
+          test "$ok" = 1
+          echo "$config"
+          curl -fsS "https://builttooffend.com/api/health?cb=$(date +%s%N)" | grep -q '"ok":true'
+          echo 'READY: Built To Offend checkout is live with direct Prodigi single-spread fulfilment.'
