@@ -22,8 +22,8 @@ jobs:
 
           echo '== DOMAIN HEALTH =='
           for host in builttooffend.com www.builttooffend.com builttooffend.co.uk www.builttooffend.co.uk; do
-            code=$(curl -sS --max-time 20 -o /tmp/health.json -w '%{http_code}' "https://$host/api/health?verify=$(date +%s)")
-            echo "$host HTTP $code: $(cat /tmp/health.json)"
+            code=$(curl -LsS --max-time 20 -o /tmp/health.json -w '%{http_code}' "https://$host/api/health?verify=$(date +%s)")
+            echo "$host final HTTP $code: $(cat /tmp/health.json)"
             test "$code" = 200
             node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/health.json","utf8"));if(j.ok!==true)process.exit(1)'
           done
