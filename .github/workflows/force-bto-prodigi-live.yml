@@ -34,24 +34,29 @@ jobs:
         run: |
           set -euo pipefail
           export NO_COLOR=1 FORCE_COLOR=0
-          rm -f /tmp/cloudflare-device-login.log
-          set +e
-          (npx wrangler login --device --browser=false > /tmp/cloudflare-device-login.log 2>&1) &
-          login_pid=$!
-          set -e
-          for attempt in $(seq 1 45); do
-            if grep -q 'enter the code' /tmp/cloudflare-device-login.log 2>/dev/null; then break; fi
-            sleep 1
+          auth_ok=0
+          for login_attempt in 1 2 3; do
+            rm -f /tmp/cloudflare-device-login.log
+            set +e
+            (npx wrangler login --device --browser=false > /tmp/cloudflare-device-login.log 2>&1) &
+            login_pid=$!
+            set -e
+            for poll in $(seq 1 45); do
+              if grep -q 'enter the code' /tmp/cloudflare-device-login.log 2>/dev/null; then break; fi
+              sleep 1
+            done
+            grep -q 'enter the code' /tmp/cloudflare-device-login.log
+            printf '\nDeployment run: %s\nApproval attempt: %s of 3\n\n' "$RUN_URL" "$login_attempt" >> /tmp/cloudflare-device-login.log
+            gh issue create --title "Cloudflare approval required — BTO PRODIGI RUNTIME — run ${{ github.run_number }} — attempt $login_attempt" --body-file /tmp/cloudflare-device-login.log || true
+            set +e
+            wait "$login_pid"
+            rc=$?
+            set -e
+            cat /tmp/cloudflare-device-login.log || true
+            if [ "$rc" = 0 ]; then auth_ok=1; break; fi
+            echo "Cloudflare approval attempt $login_attempt expired or failed; requesting a fresh code automatically."
           done
-          grep -q 'enter the code' /tmp/cloudflare-device-login.log
-          printf '\nDeployment run: %s\n\n' "$RUN_URL" >> /tmp/cloudflare-device-login.log
-          gh issue create --title "Cloudflare approval required — BTO PRODIGI RUNTIME — run ${{ github.run_number }}" --body-file /tmp/cloudflare-device-login.log || true
-          set +e
-          wait "$login_pid"
-          rc=$?
-          set -e
-          cat /tmp/cloudflare-device-login.log || true
-          test "$rc" = 0
+          test "$auth_ok" = 1
           npx wrangler whoami
 
       - name: Build current Built To Offend production source
