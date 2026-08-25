@@ -1,0 +1,16 @@
+{
+  "name": "built-to-offend",
+  "version": "0.9.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "node --check src/index.js && node --check public/app.js && wrangler deploy --dry-run",
+    "migrate:local": "wrangler d1 migrations apply built-to-offend-orders --local",
+    "migrate:remote": "wrangler d1 migrations apply built-to-offend-orders --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

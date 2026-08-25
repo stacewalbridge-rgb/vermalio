@@ -1,0 +1,60 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "built-to-offend",
+  "main": "./src/index.js",
+  "compatibility_date": "2026-08-25",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ASSET_BUCKET"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "builttooffend.com",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.builttooffend.com",
+      "custom_domain": true
+    },
+    {
+      "pattern": "builttooffend.co.uk",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.builttooffend.co.uk",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "PUBLIC_BASE_URL": "https://builttooffend.com",
+    "CARD_PRICE_PENCE": "499",
+    "UK_SHIPPING_PENCE": "199",
+    "PHOTO_ADDON_PENCE": "100",
+    "PRINT_PROVIDER": "hold",
+    "PRODIGI_ENV": "sandbox",
+    "PRODIGI_SKU": "GLOBAL-GRE-MOH-7X5-DIR",
+    "PRODIGI_SHIPPING_METHOD": "Budget"
+  },
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  }
+}

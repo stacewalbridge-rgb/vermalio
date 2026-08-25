@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#08090b" />
+  <meta name="description" content="Built to Offend — AI-created brutally honest greeting cards. Say what you really mean." />
+  <link rel="canonical" href="https://builttooffend.com/" />
+  <meta property="og:title" content="Built to Offend — Say what you really mean." />
+  <meta property="og:description" content="Tell the Monster. Choose the brutality. Build the card you couldn't buy anywhere else." />
+  <meta property="og:url" content="https://builttooffend.com/" />
+  <meta property="og:type" content="website" />
+  <title>Built to Offend — Say what you really mean.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800;900&family=Special+Elite&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Built to Offend home">
+      <span class="brand-mark" aria-hidden="true">☠</span>
+      <span><strong>BUILT TO OFFEND</strong><small>Say what you really mean.</small></span>
+    </a>
+    <nav class="desktop-nav" aria-label="Main navigation">
+      <a href="#generator">Create a Monster</a>
+      <a href="#examples">Ready-Made</a>
+      <a href="#occasions">Occasions</a>
+      <a href="#how">How It Works</a>
+      <a href="#pricing">Pricing</a>
+    </nav>
+    <a class="mini-cart" href="#fulfilment" aria-label="Basket">🛒 <span>0</span></a>
+  </header>
+
+  <main id="top">
+    <section class="hero shell">
+      <div class="hero-copy">
+        <div class="eyebrow">AI-GENERATED • BRUTALLY HONEST • UNIQUE EVERY TIME</div>
+        <h1>Can't find a card that says what you're <em>actually thinking?</em></h1>
+        <p class="lead">Tell the Monster. Choose the brutality. We'll build the card you couldn't buy anywhere else.</p>
+        <div class="hero-actions">
+          <a class="btn primary" href="#generator">⚗ CREATE MY MONSTER</a>
+          <a class="btn ghost" href="#examples">BROWSE SAVAGE CARDS</a>
+        </div>
+        <div class="trust-row">
+          <span>🧠 AI-generated</span><span>☠ Brutally honest</span><span>⚡ Unique every time</span>
+        </div>
+      </div>
+
+      <div class="lab-stage" aria-label="Original stitched monster mascot in a mad laboratory">
+        <div class="coil coil-left"></div>
+        <div class="coil coil-right"></div>
+        <div class="lightning l1"></div><div class="lightning l2"></div><div class="lightning l3"></div>
+        <div class="danger-sign">DANGER<br><b>BRUTAL<br>HONESTY<br>INSIDE</b></div>
+        <div class="monster mascot" aria-hidden="true">
+          <div class="monster-head"><i class="bolt b-left"></i><i class="bolt b-right"></i><span class="eye e-left">×</span><span class="eye e-right">×</span><span class="stitch s1">////</span><span class="mouth">〰</span><span class="tongue"></span></div>
+          <div class="monster-body"><span class="patch">♥</span><span class="body-stitch">//////</span><i class="arm a-left"></i><i class="arm a-right"></i><i class="leg leg-left"></i><i class="leg leg-right"></i></div>
+        </div>
+        <div class="slab"><span>PROPERTY OF THE MONSTER</span></div>
+        <div class="beaker b1">●</div><div class="beaker b2">●</div>
+        <div class="mug">TEARS<br><b>FUEL</b></div>
+      </div>
+    </section>
+
+    <section id="generator" class="generator-section shell">
+      <div class="section-heading">
+        <p>THE MAIN EVENT</p>
+        <h2>Create your own savage card with AI</h2>
+        <span>Upload a photo or let the Monster design the chaos.</span>
+      </div>
+
+      <div class="generator-grid">
+        <form id="monsterForm" class="panel form-panel" novalidate>
+          <div class="field-grid three">
+            <label>Recipient name<input id="recipient" name="recipient" placeholder="e.g. Dave" maxlength="40" required /></label>
+            <label>Age<input id="age" name="age" type="number" min="18" max="120" placeholder="e.g. 47" /></label>
+            <label>Occasion<select id="occasion" name="occasion"><option>Birthday</option><option>Leaving</option><option>Retirement</option><option>Wedding</option><option>Divorce</option><option>Christmas</option><option>Valentine's</option><option>Break-up</option><option>New baby</option><option>Congratulations</option><option>Sorry</option><option>Just because</option></select></label>
+          </div>
+          <div class="field-grid two">
+            <label>Relationship<select id="relationship" name="relationship"><option>Best friend</option><option>Friend</option><option>Boss / manager</option><option>Colleague</option><option>Partner</option><option>Ex</option><option>Brother</option><option>Sister</option><option>Mum</option><option>Dad</option><option>Neighbour</option><option>Other</option></select></label>
+            <label>Tone<select id="tone" name="tone"><option value="sarcastic">Sarcastic</option><option value="foul">Foul-mouthed</option><option value="cold">Cold & cutting</option><option value="dark">Dark humour</option><option value="passive">Passive-aggressive</option><option value="chaos">Absolutely unhinged</option></select></label>
+          </div>
+
+          <label>Tell us what they did <span class="hint">Give the Monster ammunition.</span>
+            <textarea id="ammo" name="ammo" rows="5" maxlength="700" placeholder="e.g. Takes credit for everyone else's work, disappears early, thinks the team loves him and somehow got another company to hire him..."></textarea>
+          </label>
+          <div class="field-grid two">
+            <label>Something they always say<input id="quote" name="quote" maxlength="100" placeholder="Optional — e.g. 'I'm not here to make friends'" /></label>
+            <label>Do NOT mention<input id="avoid" name="avoid" maxlength="120" placeholder="Optional — e.g. family" /></label>
+          </div>
+
+          <fieldset class="photo-fieldset">
+            <legend>Artwork</legend>
+            <div class="radio-row">
+              <label><input type="radio" name="art" value="monster" checked /> Monster artwork</label>
+              <label><input type="radio" name="art" value="photo" /> Upload their photo</label>
+              <label><input type="radio" name="art" value="type" /> Typography only</label>
+            </div>
+            <label class="upload" id="uploadWrap">📷 Choose photo<input id="photo" type="file" accept="image/*" /></label>
+            <img id="photoPreview" alt="Uploaded preview" />
+          </fieldset>
+
+          <div class="brutality-head"><div><b>Brutality Level</b><span id="brutalityName">Savage</span></div><output id="brutalityOutput">6</output></div>
+          <input id="brutality" class="brutality-range" type="range" min="1" max="10" value="6" step="1" />
+          <div class="brutality-scale"><span>1<br><small>Rude but not horrific</small></span><span>5<br><small>Brutal</small></span><span>10<br><small>THE MONSTER</small></span></div>
+          <button id="buildBtn" class="btn primary wide" type="submit">⚡ BUILD MY MONSTER</button>
+          <p class="microcopy">18+ humour. The Monster can be filthy, savage and personal, but it won't generate threats, hate attacks, doxxing or invented criminal allegations.</p>
+        </form>
+
+        <aside class="panel lab-panel" aria-live="polite">
+          <div class="lab-title"><span>⚗</span><div><b>The Monster is working…</b><small id="labStatus">Awaiting ammunition.</small></div></div>
+          <div class="process-list">
+            <div data-step="1"><span>🔎</span><b>Analysing victim…</b><i></i></div>
+            <div data-step="2"><span>⚗</span><b>Removing politeness…</b><i></i></div>
+            <div data-step="3"><span>☠</span><b>Adding unnecessary profanity…</b><i></i></div>
+            <div data-step="4"><span>⚡</span><b>Injecting brutal honesty…</b><i></i></div>
+          </div>
+          <div class="wake-stage">
+            <div id="wakeMonster" class="mini-monster"><span>×</span><span>×</span><i></i></div>
+            <div id="aliveStamp" class="alive-stamp">IT'S ALIVE</div>
+          </div>
+          <div class="lab-tip">Tip: the best cards use one or two embarrassingly specific details.</div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="results" class="results-section shell" hidden>
+      <div class="section-heading centred">
+        <p>⚡ YOUR MONSTER CREATED 3 ABOMINATIONS ⚡</p>
+        <h2>Pick your weapon.</h2>
+      </div>
+      <div id="resultCards" class="result-grid"></div>
+      <div class="result-actions">
+        <button id="worseBtn" class="btn danger" type="button">☢ MAKE IT WORSE</button>
+        <button id="softerBtn" class="btn ghost" type="button">😇 TAKE IT DOWN A NOTCH</button>
+        <button id="againBtn" class="btn ghost" type="button">↻ CREATE AGAIN</button>
+      </div>
+    </section>
+
+    <section id="examples" class="examples shell">
+      <div class="section-heading centred"><p>PROOF OF BAD TASTE</p><h2>Three flavours of regret</h2></div>
+      <div class="sample-grid">
+        <article class="sample-card green"><span>VERSION 1</span><h3>THE SAVAGE</h3><p>Happy birthday! Another year closer to death. Don't worry, you still haven't accomplished anything.</p></article>
+        <article class="sample-card purple"><span>VERSION 2</span><h3>THE BASTARD</h3><p>Congratulations on being yet another year older and somehow still a complete waste of everyone's group-chat storage.</p></article>
+        <article class="sample-card pink"><span>VERSION 3</span><h3>THE MONSTER</h3><p>You're not just getting older. You're becoming a historical warning about what happens when confidence wildly exceeds ability.</p></article>
+      </div>
+    </section>
+
+    <section id="occasions" class="occasions shell">
+      <div class="section-heading centred"><p>POPULAR OCCASIONS</p><h2>There's always a reason to be inappropriate.</h2></div>
+      <div class="occasion-row"><button>🎂<b>Birthday</b></button><button>🚪<b>Leaving</b></button><button>💍<b>Wedding</b></button><button>💔<b>Divorce</b></button><button>🎄<b>Christmas</b></button><button>💼<b>Boss</b></button><button>🥀<b>Ex</b></button><button>🪑<b>Retirement</b></button></div>
+    </section>
+
+    <section id="how" class="how shell">
+      <div class="section-heading centred"><p>HOW IT WORKS</p><h2>Three steps. One terrible decision.</h2></div>
+      <div class="how-grid"><article><span>1</span><h3>Feed it ammunition</h3><p>Tell us who, why, what happened and what definitely shouldn't be mentioned.</p></article><article><span>2</span><h3>Choose brutality</h3><p>From cheeky at level 1 to THE MONSTER at level 10.</p></article><article><span>3</span><h3>Pick & send</h3><p>Edit the result, add artwork, then print and post straight to the recipient.</p></article></div>
+    </section>
+
+    <section id="pricing" class="pricing shell">
+      <div class="section-heading centred"><p>NO LUXURY-CARD NONSENSE</p><h2>Brutal cards. Sensible prices.</h2><span>Launch pricing is deliberately close to mainstream personalised cards, with the AI personalisation included.</span></div>
+      <div class="pricing-grid">
+        <article class="price-card featured"><span class="price-kicker">MOST POPULAR</span><h3>Monster Card</h3><div class="price js-card-price">£4.99</div><p>AI-written personalised card, your chosen brutality, editable wording and premium print.</p><ul><li>3 Monster versions</li><li>Levels 1–10</li><li>Personalised inside message</li><li>Private print master</li></ul><a class="btn primary wide" href="#generator">CREATE MY MONSTER</a></article>
+        <article class="price-card"><span class="price-kicker">PHOTO EDITION</span><h3>Photo Monster</h3><div class="price js-photo-price">£5.99</div><p>Add their face to the chaos while keeping the full AI card-writing experience.</p><ul><li>Everything in Monster Card</li><li>Photo upload</li><li>High-resolution print rendering</li><li>Editable wording</li></ul><a class="btn ghost wide" href="#generator">ADD THEIR FACE</a></article>
+        <article class="price-card"><span class="price-kicker">UK DELIVERY</span><h3>Print & Post</h3><div class="price js-delivery-price">£1.99</div><p>Paid separately at checkout. The finished card goes straight into fulfilment after payment.</p><ul><li>White-label fulfilment</li><li>No stock held by us</li><li>Direct-to-recipient delivery</li><li>Worldwide-ready architecture</li></ul></article>
+      </div>
+      <p class="price-note">builttooffend.com is the main worldwide brand. UK fulfilment launches first while international printer approval and rates are switched on behind the scenes.</p>
+    </section>
+
+    <section id="fulfilment" class="fulfilment shell">
+      <article><div>🖨️</div><h3>Print & Post</h3><p>We print it. We post it. They get roasted.</p></article>
+      <article><div>🚚</div><h3>Direct delivery</h3><p>Mail it straight to them so you don't have to make eye contact afterwards.</p></article>
+      <article><div>🔒</div><h3>Private by design</h3><p>Your ammunition is for creating the card — not public entertainment.</p></article>
+    </section>
+  </main>
+
+  <footer><div class="shell footer-inner"><div class="brand compact"><span class="brand-mark">☠</span><span><strong>BUILT TO OFFEND</strong><small>Say what you really mean.</small></span></div><div class="footer-links"><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="mailto:hello@builttooffend.com">Contact</a></div><p>18+ adult humour • builttooffend.com</p></div></footer>
+
+  <template id="resultTemplate">
+    <article class="generated-card">
+      <div class="version-tag"></div>
+      <div class="card-preview">
+        <div class="card-art"></div>
+        <div class="card-copy"><h3 class="front-copy"></h3><div class="inside-copy"></div></div>
+      </div>
+      <div class="generated-controls">
+        <button class="select-card btn primary" type="button">ORDER THIS ONE — £4.99</button>
+        <button class="edit-card btn ghost" type="button">EDIT WORDING</button>
+      </div>
+    </article>
+  </template>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
