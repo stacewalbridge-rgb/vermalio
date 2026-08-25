@@ -26,6 +26,23 @@ jobs:
           test "$code" = 200
           node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/vermalio.json","utf8"));if(j.ok!==true)process.exit(1)'
 
+      - name: Check privacy-safe Prodigi fulfilment stats
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://vermalio.stace-walbridge.workers.dev/api/prodigi/webhook/stats'
+          code=0
+          for i in $(seq 1 24); do
+            code=$(curl -sS --max-time 30 -o /tmp/prodigi-stats.json -w '%{http_code}' "$url" || true)
+            if [ "$code" = 200 ]; then break; fi
+            sleep 5
+          done
+          echo "PRODIGI_STATS_HTTP=$code"
+          cat /tmp/prodigi-stats.json || true
+          echo
+          test "$code" = 200
+          node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/prodigi-stats.json","utf8"));if(j.ok!==true||typeof j.orderCount!=="number")process.exit(1)'
+
       - name: Check Built To Offend health and config
         shell: bash
         run: |
