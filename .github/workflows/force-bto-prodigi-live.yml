@@ -39,7 +39,11 @@ jobs:
           (npx wrangler login --device --browser=false > /tmp/cloudflare-device-login.log 2>&1) &
           login_pid=$!
           set -e
-          sleep 8
+          for attempt in $(seq 1 45); do
+            if grep -q 'enter the code' /tmp/cloudflare-device-login.log 2>/dev/null; then break; fi
+            sleep 1
+          done
+          grep -q 'enter the code' /tmp/cloudflare-device-login.log
           printf '\nDeployment run: %s\n\n' "$RUN_URL" >> /tmp/cloudflare-device-login.log
           gh issue create --title "Cloudflare approval required — BTO PRODIGI RUNTIME — run ${{ github.run_number }}" --body-file /tmp/cloudflare-device-login.log || true
           set +e
