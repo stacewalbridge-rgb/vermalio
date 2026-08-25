@@ -1,0 +1,36 @@
+name: BTO Source Flow Diagnose
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/bto-source-flow-diagnose.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct current BTO production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .inspect && mkdir -p .inspect
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 | base64 -d > .inspect/bto.tar.xz
+          tar -xJf .inspect/bto.tar.xz -C .inspect
+          cd .inspect/built-to-offend-production
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          node "$GITHUB_WORKSPACE/.github/bto-prodigi-spread-fix.js"
+          node --check src/index.js
+          echo '--- ORDER STATUS ---'
+          grep -n -A80 -B10 'function orderStatus\|async function orderStatus' src/index.js || true
+          echo '--- FULFIL ORDER ---'
+          grep -n -A130 -B10 'async function fulfillOrder' src/index.js || true
+          echo '--- STRIPE WEBHOOK ---'
+          grep -n -A100 -B10 'async function stripeWebhook' src/index.js || true
+          echo '--- ROUTES ---'
+          grep -n -A50 -B10 '/api/order-status\|/api/stripe-webhook' src/index.js || true
