@@ -1,0 +1,57 @@
+name: BTO Prodigi Offline Rehearsal
+
+on:
+  push:
+    branches: [bto-source-inspect]
+    paths:
+      - ".github/workflows/bto-prodigi-offline-rehearsal.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Rebuild exact production bundle and dry run
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/bto && mkdir -p /tmp/bto
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 | base64 -d > /tmp/bto.tar.xz
+          tar -xJf /tmp/bto.tar.xz -C /tmp/bto
+          root=$(find /tmp/bto -type f -path '*/src/index.js' -printf '%h\n' | head -1 | sed 's#/src$##')
+          test -n "$root"
+          cd "$root"
+          cp "$GITHUB_WORKSPACE/built-to-offend/deploy/0002_secure_tokens.sql" migrations/0002_secure_tokens.sql
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          patch -p0 --forward < "$GITHUB_WORKSPACE/_inspect/prodigi-single-asset.patch"
+          node --check src/index.js
+          node --check public/app.js
+          npm install --no-audit --no-fund
+          node <<'NODE'
+          const fs=require('fs');
+          const app=fs.readFileSync('public/app.js','utf8');
+          const worker=fs.readFileSync('src/index.js','utf8');
+          const required=[
+            ['6118x2161 canvas', /W=6118,H=2161/],
+            ['one print upload', /uploadAsset\(order\.orderId,order\.uploadToken,'print',printBlob\)/],
+            ['jpeg upload', /'content-type':'image\/jpeg'/],
+            ['Prodigi default asset', /assets: \[\{ printArea: "default", url: printUrl \}\]/],
+            ['createdWithIssues rejection', /outcome === "createdwithissues"/],
+            ['direct Prodigi only', /if \(!env\.PRODIGI_API_KEY\) throw new Error/],
+          ];
+          for(const [name,re] of required){const source=name.includes('canvas')||name.includes('upload')?app:worker;if(!re.test(source)) throw new Error('Missing '+name);}
+          const cuts=[0,1529,3059,4588,6118];
+          if(cuts[0]!==0||cuts.at(-1)!==6118||cuts.some((x,i)=>i&&x<=cuts[i-1])) throw new Error('Invalid panel cuts');
+          const widths=cuts.slice(1).map((x,i)=>x-cuts[i]);
+          if(widths.reduce((a,b)=>a+b,0)!==6118||Math.max(...widths)-Math.min(...widths)>1) throw new Error('Panel widths do not cover canvas evenly');
+          console.log('Panel widths:',widths.join(','));
+          NODE
+          npx wrangler deploy --dry-run --config wrangler.jsonc
+          echo 'READY_FOR_FINAL_DEPLOY=1'
