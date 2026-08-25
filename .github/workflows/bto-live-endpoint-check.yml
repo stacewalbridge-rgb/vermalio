@@ -1,0 +1,51 @@
+name: BTO Live Endpoint Check
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/bto-live-endpoint-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Vermalio Prodigi webhook health
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://vermalio.stace-walbridge.workers.dev/api/prodigi/webhook/health'
+          code=$(curl -sS --max-time 30 -o /tmp/vermalio.json -w '%{http_code}' "$url")
+          echo "VERMALIO_HTTP=$code"
+          cat /tmp/vermalio.json
+          echo
+          test "$code" = 200
+          node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/vermalio.json","utf8"));if(j.ok!==true)process.exit(1)'
+
+      - name: Check Built To Offend health and config
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /api/health /api/config; do
+            url="https://builttooffend.com$path?cb=$(date +%s%N)"
+            safe=$(echo "$path" | tr '/' '_')
+            file="/tmp/bto${safe}.json"
+            code=$(curl -sS --max-time 30 -o "$file" -w '%{http_code}' "$url")
+            echo "BTO_${safe}_HTTP=$code"
+            cat "$file"
+            echo
+          done
+
+      - name: Check Built To Offend homepage
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -L --max-time 30 -o /tmp/bto-home.html -w '%{http_code}' 'https://builttooffend.com/?cb=livecheck')
+          echo "BTO_HOME_HTTP=$code"
+          echo "BTO_HOME_BYTES=$(wc -c < /tmp/bto-home.html)"
+          grep -io 'Built To Offend' /tmp/bto-home.html | head -1 || true
+          test "$code" = 200
