@@ -6,6 +6,7 @@ on:
     paths:
       - "built-to-offend/**"
       - ".github/workflows/deploy-built-to-offend.yml"
+      - ".github/bto-seo-build.js"
   workflow_dispatch:
 
 permissions:
@@ -44,6 +45,7 @@ jobs:
           cp built-to-offend/deploy/0002_secure_tokens.sql "$BTO_DIR/migrations/0002_secure_tokens.sql"
           cd "$BTO_DIR"
           patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          node "$GITHUB_WORKSPACE/.github/bto-seo-build.js"
 
           node <<'NODE'
           const fs = require('fs');
@@ -76,6 +78,11 @@ jobs:
           npm install --no-audit --no-fund
           node --check src/index.js
           node --check public/app.js
+          test -f public/robots.txt
+          test -f public/sitemap.xml
+          test -f public/novelty-cards.html
+          grep -q 'Funny Personalised & Rude Greeting Cards' public/index.html
+          grep -q 'https://builttooffend.com/sitemap.xml' public/robots.txt
 
       - name: Authenticate to Cloudflare
         working-directory: .deploy/built-to-offend-production
@@ -286,7 +293,7 @@ jobs:
           npx wrangler deploy --dry-run --config wrangler.jsonc
           npx wrangler deploy --config wrangler.jsonc
 
-      - name: Verify live ordering readiness
+      - name: Verify live ordering readiness and SEO
         shell: bash
         run: |
           set -euo pipefail
@@ -307,6 +314,10 @@ jobs:
           }
           console.log('READY: Stripe payment -> Prodigi automatic fulfilment.');
           NODE
+          curl -fsS https://builttooffend.com/robots.txt | grep -q 'Sitemap: https://builttooffend.com/sitemap.xml'
+          curl -fsS https://builttooffend.com/sitemap.xml | grep -q 'novelty-cards.html'
+          curl -fsS https://builttooffend.com/novelty-cards.html | grep -qi 'novelty greeting cards'
+          curl -fsS https://builttooffend.com/ | grep -q 'rel="canonical" href="https://builttooffend.com/"'
           curl -fsSI https://www.builttooffend.com/ | head -10
           curl -fsSI https://builttooffend.co.uk/ | head -10
           curl -fsSI https://www.builttooffend.co.uk/ | head -10
