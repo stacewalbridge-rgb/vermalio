@@ -5,6 +5,8 @@ on:
     branches: [built-to-offend-deploy]
     paths:
       - ".github/workflows/finalize-bto-v2.yml"
+      - "built-to-offend/deploy/bto-ai-qwen.patch"
+      - "built-to-offend/deploy/bto-source.patch"
   workflow_dispatch:
 
 permissions:
