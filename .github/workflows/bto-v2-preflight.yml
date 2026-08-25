@@ -1,0 +1,33 @@
+name: BTO v2 preflight
+
+on:
+  push:
+    branches: [built-to-offend-deploy]
+    paths:
+      - ".github/workflows/bto-v2-preflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate final source patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .preflight && mkdir .preflight
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 | base64 -d > .preflight/bto.tar.xz
+          tar -xJf .preflight/bto.tar.xz -C .preflight
+          cd .preflight/built-to-offend-production
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-ai-qwen.patch"
+          node --check src/index.js
+          node --check public/app.js
+          grep -q 'const prompt = `${SYSTEM}' src/index.js
+          grep -q 'prompt,' src/index.js
+          if grep -q 'messages: \[{ role: "system", content: SYSTEM }' src/index.js; then exit 1; fi
+          echo 'PRE-FLIGHT PASS'
