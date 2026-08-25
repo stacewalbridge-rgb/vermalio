@@ -24,6 +24,19 @@ jobs:
           cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 \
             | base64 -d > .inspect/built-to-offend.tar.xz
           tar -xJf .inspect/built-to-offend.tar.xz -C .inspect
+      - name: Inspect basket and API code
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd .inspect/built-to-offend-production
+          echo '===== FILES ====='
+          find public src -maxdepth 2 -type f -print | sort
+          echo '===== APP.JS BASKET/FETCH MATCHES ====='
+          grep -n -E 'api/orders|api/order-asset|api/checkout|basket|ORDER THIS ONE|fetch\\(' public/app.js || true
+          echo '===== INDEX.JS API MATCHES ====='
+          grep -n -E 'api/orders|redirectHostIfNeeded|ASSETS|fetch\\(' src/index.js || true
+          echo '===== APP.JS ====='
+          cat public/app.js
       - name: Check public domains
         shell: bash
         run: |
