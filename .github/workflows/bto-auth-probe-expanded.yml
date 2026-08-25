@@ -1,0 +1,58 @@
+name: BTO Expanded Cloudflare Auth Probe
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/bto-auth-probe-expanded.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      S_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      S_CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      S_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_TOKEN }}
+      S_CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+      S_CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      S_CLOUDFLARE_GLOBAL_API_KEY: ${{ secrets.CLOUDFLARE_GLOBAL_API_KEY }}
+      S_CF_GLOBAL_API_KEY: ${{ secrets.CF_GLOBAL_API_KEY }}
+      S_WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
+      S_CLOUDFLARE_WORKERS_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
+      S_CLOUDFLARE_PAGES_TOKEN: ${{ secrets.CLOUDFLARE_PAGES_TOKEN }}
+      S_CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+      S_CF_EMAIL: ${{ secrets.CF_EMAIL }}
+      S_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      S_CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      V_CLOUDFLARE_API_TOKEN: ${{ vars.CLOUDFLARE_API_TOKEN }}
+      V_CF_API_TOKEN: ${{ vars.CF_API_TOKEN }}
+      V_CLOUDFLARE_TOKEN: ${{ vars.CLOUDFLARE_TOKEN }}
+      V_CLOUDFLARE_API_KEY: ${{ vars.CLOUDFLARE_API_KEY }}
+      V_CF_API_KEY: ${{ vars.CF_API_KEY }}
+      V_CLOUDFLARE_GLOBAL_API_KEY: ${{ vars.CLOUDFLARE_GLOBAL_API_KEY }}
+      V_CF_GLOBAL_API_KEY: ${{ vars.CF_GLOBAL_API_KEY }}
+      V_WRANGLER_API_TOKEN: ${{ vars.WRANGLER_API_TOKEN }}
+      V_CLOUDFLARE_WORKERS_TOKEN: ${{ vars.CLOUDFLARE_WORKERS_TOKEN }}
+      V_CLOUDFLARE_PAGES_TOKEN: ${{ vars.CLOUDFLARE_PAGES_TOKEN }}
+      V_CLOUDFLARE_EMAIL: ${{ vars.CLOUDFLARE_EMAIL }}
+      V_CF_EMAIL: ${{ vars.CF_EMAIL }}
+      V_CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      V_CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+    steps:
+      - name: Report names that exist without revealing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          for name in $(env | cut -d= -f1 | grep -E '^(S|V)_(CLOUDFLARE|CF|WRANGLER)' | sort); do
+            value="${!name:-}"
+            if [ -n "$value" ]; then
+              echo "PRESENT:$name:LENGTH=${#value}"
+              found=1
+            fi
+          done
+          if [ "$found" = 0 ]; then echo 'NO_CANDIDATE_CLOUDFLARE_CREDENTIALS_FOUND'; fi
