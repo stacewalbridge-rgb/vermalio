@@ -30,3 +30,27 @@ jobs:
           echo '=== BRIDGE HEALTH ==='
           curl -sS --max-time 30 'https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi/health' || true
           echo
+
+  production-auth-probe:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      A: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      B: ${{ secrets.CF_API_TOKEN }}
+      C: ${{ secrets.CLOUDFLARE_TOKEN }}
+      D: ${{ secrets.CLOUDFLARE_API_KEY }}
+      E: ${{ secrets.CF_API_KEY }}
+      F: ${{ secrets.WRANGLER_API_TOKEN }}
+      G: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      H: ${{ secrets.CF_ACCOUNT_ID }}
+    steps:
+      - name: Check production environment Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          for n in A B C D E F G H; do
+            v="${!n:-}"
+            if [ -n "$v" ]; then echo "PRESENT:$n:LENGTH=${#v}"; found=1; fi
+          done
+          if [ "$found" = 0 ]; then echo NO_PRODUCTION_ENV_CLOUDFLARE_AUTH; fi
