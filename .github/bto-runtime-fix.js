@@ -27,6 +27,29 @@ app = mustReplace(
   'order button basket handler'
 );
 
+// Prodigi's current 7x5 direct-mail greeting card exposes one `default`
+// print area. Its template contains all four card panels in one image. Build
+// that print sheet in-browser so the front, back and inside message are not lost.
+if (!app.includes('async function renderProdigiSheetBlob(')) {
+  const apiMarker = 'async function apiJson(path,options={})';
+  const prodigiSheetRuntime = `async function drawBlobToCanvas(ctx,blob,x,y,w,h){\n  if(typeof createImageBitmap==='function'){\n    const bitmap=await createImageBitmap(blob);\n    try{ctx.drawImage(bitmap,x,y,w,h)}finally{if(bitmap.close)bitmap.close()}\n    return;\n  }\n  const url=URL.createObjectURL(blob);\n  try{const img=await loadImage(url);ctx.drawImage(img,x,y,w,h)}finally{URL.revokeObjectURL(url)}\n}\n\nasync function renderProdigiSheetBlob(front,inside,d){\n  const panelW=1500,panelH=2100;\n  const canvas=document.createElement('canvas');canvas.width=panelW*2;canvas.height=panelH*2;\n  const ctx=canvas.getContext('2d');\n  ctx.fillStyle='#f5f0e3';ctx.fillRect(0,0,canvas.width,canvas.height);\n\n  // Outside back panel — deliberately restrained branding.\n  ctx.fillStyle='#090a0c';ctx.fillRect(0,0,panelW,panelH);\n  ctx.fillStyle='#b9ff18';ctx.textAlign='center';ctx.font='900 66px Arial';ctx.fillText('BUILT TO OFFEND',panelW/2,panelH/2-35);\n  ctx.fillStyle='#ffffff';ctx.font='500 34px Arial';ctx.fillText('builttooffend.com',panelW/2,panelH/2+40);\n  ctx.fillStyle='#7a16a8';ctx.fillRect(panelW/2-150,panelH/2+90,300,16);\n\n  // Front panel.\n  const frontBlob=await renderPrintBlob(front,inside,d,'outside');\n  await drawBlobToCanvas(ctx,frontBlob,panelW,0,panelW,panelH);\n\n  // Inside-left panel stays clean for visual breathing room.\n  ctx.fillStyle='#f5f0e3';ctx.fillRect(0,panelH,panelW,panelH);\n  ctx.fillStyle='#6d6872';ctx.textAlign='center';ctx.font='500 27px Arial';ctx.fillText('BUILT TO OFFEND',panelW/2,panelH*2-130);\n\n  // Inside-right message panel.\n  const insideBlob=await renderPrintBlob(front,inside,d,'inside');\n  await drawBlobToCanvas(ctx,insideBlob,panelW,panelH,panelW,panelH);\n\n  return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Could not render Prodigi print sheet')),'image/jpeg',.94));\n}\n\n${apiMarker}`;
+  app = mustReplace(app, apiMarker, prodigiSheetRuntime, 'Prodigi single-sheet renderer');
+}
+
+app = mustReplace(
+  app,
+  "async function uploadAsset(orderId,token,kind,blob){return apiJson(`/api/order-asset?order_id=${encodeURIComponent(orderId)}&kind=${encodeURIComponent(kind)}`,{method:'PUT',headers:{'content-type':'image/png','x-order-token':token},body:blob})}",
+  "async function uploadAsset(orderId,token,kind,blob){return apiJson(`/api/order-asset?order_id=${encodeURIComponent(orderId)}&kind=${encodeURIComponent(kind)}`,{method:'PUT',headers:{'content-type':blob.type||'image/png','x-order-token':token},body:blob})}",
+  'asset MIME type handling'
+);
+
+app = mustReplace(
+  app,
+  "const [outside,insideBlob]=await Promise.all([renderPrintBlob(front,inside,d,'outside'),renderPrintBlob(front,inside,d,'inside')]);\n    button.textContent='SECURING YOUR MONSTER…';\n    await Promise.all([uploadAsset(order.orderId,order.uploadToken,'outside',outside),uploadAsset(order.orderId,order.uploadToken,'inside',insideBlob)]);",
+  "const printSheet=await renderProdigiSheetBlob(front,inside,d);\n    button.textContent='SECURING YOUR MONSTER…';\n    await Promise.all([uploadAsset(order.orderId,order.uploadToken,'outside',printSheet),uploadAsset(order.orderId,order.uploadToken,'inside',printSheet)]);",
+  'single-sheet checkout artwork'
+);
+
 const appEndMarker = 'loadConfig();';
 const appEndReplacement = `const miniCart=$('.mini-cart');\nif(miniCart)miniCart.addEventListener('click',e=>{e.preventDefault();renderBasket()});\nupdateBasketCount();\n\n${appEndMarker}`;
 if (!app.includes("miniCart.addEventListener('click'")) {
@@ -60,7 +83,6 @@ const defaultMarker = worker.indexOf('\nexport default {', redirectStart);
 const bundledMarker = worker.indexOf('\nvar index_default = {', redirectStart);
 const redirectEnd = [defaultMarker,bundledMarker].filter(x=>x>=0).sort((a,b)=>a-b)[0];
 if (redirectEnd == null) throw new Error('Worker default export marker not found');
-const currentRedirectBlock = worker.slice(redirectStart, redirectEnd);
 const safeRedirectBlock = `function redirectHostIfNeeded(request) {\n  const url = new URL(request.url);\n  if (url.pathname.startsWith("/api/")) return null;\n  if (request.method !== "GET" && request.method !== "HEAD") return null;\n  const host = url.hostname.toLowerCase();\n  if (host === "builttooffend.co.uk" || host === "www.builttooffend.co.uk" || host === "www.builttooffend.com") {\n    url.protocol = "https:";\n    url.hostname = "builttooffend.com";\n    return Response.redirect(url.toString(), 308);\n  }\n  return null;\n}`;
 worker = worker.slice(0, redirectStart) + safeRedirectBlock + worker.slice(redirectEnd);
 
@@ -81,4 +103,4 @@ worker = worker.replace(
 );
 
 fs.writeFileSync(workerPath, worker);
-console.log('Built To Offend runtime fixed: basket + API hardening applied.');
+console.log('Built To Offend runtime fixed: basket + Prodigi single-sheet artwork + API hardening applied.');
