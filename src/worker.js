@@ -1,5 +1,6 @@
 import worker, { BtoOrderStore as LegacyBtoOrderStore } from "./index.js";
 import { DurableObject } from "cloudflare:workers";
+import { handleBtoProdigiSpreadBridge } from "./bto-prodigi-spread-bridge.js";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -106,6 +107,10 @@ export class BtoOrderStore extends DurableObject {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    if (url.pathname.startsWith("/api/internal/bto/prodigi/")) {
+      return handleBtoProdigiSpreadBridge(request, env, url);
+    }
 
     if (request.method === "GET" && url.pathname === "/api/prodigi/webhook/stats") {
       try {
