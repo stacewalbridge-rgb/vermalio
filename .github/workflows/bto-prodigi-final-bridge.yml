@@ -1,0 +1,148 @@
+name: BTO Prodigi Final Bridge
+
+on:
+  push:
+    branches: [bto-prodigi-final-fix]
+    paths:
+      - ".github/workflows/bto-prodigi-final-bridge.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      BTO_DIR: ${{ github.workspace }}/.deploy/built-to-offend-production
+      VERMALIO_DIR: ${{ github.workspace }}/.deploy/vermalio-main
+      PRODIGI_SKU: GLOBAL-GRE-MOH-7X5-DIR
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Authenticate to Cloudflare
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          export NO_COLOR=1 FORCE_COLOR=0
+          rm -f /tmp/cf.log
+          (npx wrangler login --device --browser=false >/tmp/cf.log 2>&1) & pid=$!
+          for i in $(seq 1 45); do grep -q 'enter the code' /tmp/cf.log 2>/dev/null && break; sleep 1; done
+          grep -q 'enter the code' /tmp/cf.log
+          printf '\nDeployment run: %s\n' "$RUN_URL" >>/tmp/cf.log
+          gh issue create --title "Cloudflare approval required — BTO FINAL BRIDGE — run ${{ github.run_number }}" --body-file /tmp/cf.log || true
+          set +e; wait "$pid"; rc=$?; set -e
+          cat /tmp/cf.log || true
+          test "$rc" = 0
+          npx wrangler whoami
+
+      - name: Deploy Vermalio Prodigi bridge and Built To Offend
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .deploy && mkdir -p .deploy
+          TOKEN=$(openssl rand -hex 32)
+          echo "::add-mask::$TOKEN"
+          TOKEN_HASH=$(printf '%s' "$TOKEN" | sha256sum | awk '{print $1}')
+
+          # Build from the current Vermalio main branch without changing main in GitHub.
+          git fetch origin main --depth=1
+          mkdir -p "$VERMALIO_DIR"
+          git archive FETCH_HEAD | tar -x -C "$VERMALIO_DIR"
+          cp built-to-offend/deploy/vermalio-prodigi-spread-bridge.js "$VERMALIO_DIR/src/bto-prodigi-spread-bridge.js"
+          VERMALIO_DIR="$VERMALIO_DIR" TOKEN_HASH="$TOKEN_HASH" node <<'NODE'
+          const fs=require('fs');
+          const path=require('path');
+          const dir=process.env.VERMALIO_DIR;
+          const indexPath=path.join(dir,'src/index.js');
+          let src=fs.readFileSync(indexPath,'utf8');
+          const imp='import { handleBtoProdigiSpreadBridge } from "./bto-prodigi-spread-bridge.js";\n';
+          if(!src.includes('handleBtoProdigiSpreadBridge')) src=imp+src;
+          const marker='export default {\n  async fetch(request, env) {\n    const url = new URL(request.url);';
+          const replacement='export default {\n  async fetch(request, env) {\n    const url = new URL(request.url);\n\n    if (url.pathname.startsWith("/api/internal/bto/prodigi/")) {\n      return handleBtoProdigiSpreadBridge(request, env, url);\n    }';
+          if(!src.includes(marker)) throw new Error('Could not locate Vermalio fetch marker');
+          src=src.replace(marker,replacement);
+          fs.writeFileSync(indexPath,src);
+
+          const cfgPath=path.join(dir,'wrangler.jsonc');
+          const cfg=JSON.parse(fs.readFileSync(cfgPath,'utf8'));
+          cfg.vars={...(cfg.vars||{}),BTO_PRODIGI_PROXY_TOKEN_HASH:process.env.TOKEN_HASH};
+          fs.writeFileSync(cfgPath,JSON.stringify(cfg,null,2)+'\n');
+          NODE
+
+          cd "$VERMALIO_DIR"
+          npm install --no-audit --no-fund
+          node --check src/index.js
+          node --check src/bto-prodigi-spread-bridge.js
+          npx wrangler secret list --config wrangler.jsonc >/tmp/vermalio-secrets.txt
+          grep -Eq 'PRODIGI_API_KEY|PRODIGI_LIVE_API_KEY|PRODIGI_KEY' /tmp/vermalio-secrets.txt
+          rm -f /tmp/vermalio-secrets.txt
+          npx wrangler deploy --dry-run --config wrangler.jsonc
+          npx wrangler deploy --config wrangler.jsonc
+
+          # Prove the existing Vermalio runtime secret works against Prodigi Live.
+          health=$(curl -fsS --max-time 30 -H "Authorization: Bearer $TOKEN" "https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi/health?sku=$PRODIGI_SKU")
+          HEALTH_JSON="$health" node -e 'const j=JSON.parse(process.env.HEALTH_JSON||"{}"); if(!(j.ok===true&&j.provider==="prodigi"&&j.printArea==="default"&&j.horizontalResolution===6118&&j.verticalResolution===2161)) process.exit(1)'
+
+          cd "$GITHUB_WORKSPACE"
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 | base64 -d > .deploy/bto.tar.xz
+          tar -xJf .deploy/bto.tar.xz -C .deploy
+          cp built-to-offend/deploy/0002_secure_tokens.sql "$BTO_DIR/migrations/0002_secure_tokens.sql"
+          cd "$BTO_DIR"
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          node "$GITHUB_WORKSPACE/.github/bto-seo-build.js"
+          node "$GITHUB_WORKSPACE/.github/bto-prodigi-spread-fix.js"
+          npm install --no-audit --no-fund
+          node --check src/index.js
+          node --check public/app.js
+
+          npx wrangler kv namespace list >/tmp/kv.json
+          npx wrangler d1 list --json >/tmp/d1.json
+          node <<'NODE'
+          const fs=require('fs');
+          const kv=JSON.parse(fs.readFileSync('/tmp/kv.json','utf8'));
+          const hit=kv.find(x=>x.title==='BTO_PRIVATE_ASSETS'||x.title==='built-to-offend-private-assets'||String(x.title||'').endsWith('-BTO_PRIVATE_ASSETS'));
+          if(!hit?.id) throw new Error('BTO private KV missing');
+          const d1=JSON.parse(fs.readFileSync('/tmp/d1.json','utf8'));
+          const db=d1.find(x=>x.name==='built-to-offend-db');
+          const dbid=db?.uuid||db?.id||db?.database_id;
+          if(!dbid) throw new Error('BTO D1 missing');
+          const p='wrangler.jsonc';
+          const cfg=JSON.parse(fs.readFileSync(p,'utf8'));
+          delete cfg.r2_buckets;
+          cfg.kv_namespaces=[{binding:'ASSET_BUCKET',id:hit.id}];
+          cfg.d1_databases=[{binding:'DB',database_name:'built-to-offend-db',database_id:dbid}];
+          cfg.vars={...(cfg.vars||{}),PUBLIC_BASE_URL:'https://builttooffend.com',CARD_PRICE_PENCE:'499',UK_SHIPPING_PENCE:'199',PHOTO_ADDON_PENCE:'100',STRIPE_STANDARD_PAYMENT_LINK:'https://buy.stripe.com/14A4gA3IEfWa3O7a5J8so02',STRIPE_PHOTO_PAYMENT_LINK:'https://buy.stripe.com/00w8wQ92YcJY4Sb1zd8so03',PRINT_PROVIDER:'prodigi',PRODIGI_ENV:'live',PRODIGI_SKU:'GLOBAL-GRE-MOH-7X5-DIR',PRODIGI_SHIPPING_METHOD:'Budget',PRODIGI_PROXY_URL:'https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi/order'};
+          fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\n');
+          NODE
+
+          npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command "INSERT INTO internal_config(key,value) VALUES('prodigi_proxy_token','$TOKEN') ON CONFLICT(key) DO UPDATE SET value=excluded.value;"
+          npx wrangler deploy --dry-run --config wrangler.jsonc
+          npx wrangler deploy --config wrangler.jsonc
+          unset TOKEN TOKEN_HASH
+
+      - name: Verify live checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for i in $(seq 1 24); do
+            config=$(curl -fsS --max-time 20 "https://builttooffend.com/api/config?cb=$(date +%s%N)" || true)
+            if CONFIG_JSON="$config" node -e 'const c=JSON.parse(process.env.CONFIG_JSON||"{}");process.exit(c.checkoutReady===true&&c.printer==="prodigi"?0:1)' 2>/dev/null; then ok=1; break; fi
+            sleep 5
+          done
+          test "$ok" = 1
+          echo "$config"
+          curl -fsS "https://builttooffend.com/api/health?cb=$(date +%s%N)" | grep -q '"ok":true'
+          echo 'READY: Built To Offend -> Stripe -> Vermalio secure bridge -> Prodigi Live.'
