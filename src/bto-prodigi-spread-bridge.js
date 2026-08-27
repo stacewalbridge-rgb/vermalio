@@ -2,14 +2,14 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 const PRODIGI_BASE = "https://api.prodigi.com";
 const DEFAULT_SKU = "GLOBAL-GRE-MOH-7X5-DIR";
-const CALLBACK_URL = "https://vermalio.stace-walbridge.workers.dev/api/prodigi/webhook";
-const ARTWORK_BASE = "https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi/artwork";
+const CALLBACK_URL = "https://builttooffend.com/api/prodigi/webhook";
+const ARTWORK_BASE = "https://builttooffend.com/api/internal/bto/prodigi/artwork";
 const SPREAD_WIDTH_PX = 6118;
 const SPREAD_HEIGHT_PX = 2161;
 const PRINT_DPI = 300;
 const PDF_WIDTH = (SPREAD_WIDTH_PX / PRINT_DPI) * 72;
 const PDF_HEIGHT = (SPREAD_HEIGHT_PX / PRINT_DPI) * 72;
-const SPREAD_TTL_SECONDS = 24 * 60 * 60;
+const SPREAD_TTL_SECONDS = 30 * 24 * 60 * 60;
 const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
 const MAX_PDF_BYTES = 24 * 1024 * 1024;
 
@@ -191,7 +191,8 @@ async function serveSpread(env, url) {
   return new Response(object.value, {
     headers: {
       "content-type": "application/pdf",
-      "cache-control": "private, no-store",
+      "content-length": String(object.value.byteLength),
+      "cache-control": "public, max-age=3600, no-transform",
       "x-content-type-options": "nosniff",
       "content-disposition": "inline; filename=print-spread.pdf",
     },
