@@ -1,0 +1,50 @@
+name: Probe BTO Workers AI fallbacks in parallel
+
+on:
+  push:
+    branches: [built-to-offend-deploy]
+    paths:
+      - ".github/workflows/bto-workers-ai-parallel-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  glm:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: GLM direct JSON test
+        shell: bash
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          code=$(curl -sS --max-time 60 -o /tmp/out.json -w '%{http_code}' -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/zai-org/glm-4.7-flash" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'Content-Type: application/json' \
+            --data '{"messages":[{"role":"system","content":"Return JSON only with key versions containing exactly three objects. Each object must have label, front and inside string fields."},{"role":"user","content":"Create three short playful birthday card messages for a friend who is always late."}],"max_tokens":500,"temperature":0.4}')
+          echo "HTTP=$code ELAPSED=$(( $(date +%s)-start ))s"
+          cat /tmp/out.json
+          test "$code" = 200
+
+  llama:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Llama direct JSON test
+        shell: bash
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          code=$(curl -sS --max-time 60 -o /tmp/out.json -w '%{http_code}' -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/meta/llama-3.3-70b-instruct-fp8-fast" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'Content-Type: application/json' \
+            --data '{"messages":[{"role":"system","content":"Return JSON only with key versions containing exactly three objects. Each object must have label, front and inside string fields."},{"role":"user","content":"Create three short playful birthday card messages for a friend who is always late."}],"max_tokens":500,"temperature":0.4}')
+          echo "HTTP=$code ELAPSED=$(( $(date +%s)-start ))s"
+          cat /tmp/out.json
+          test "$code" = 200
