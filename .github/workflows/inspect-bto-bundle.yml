@@ -44,9 +44,14 @@ jobs:
           grep -q "single-sheet" "$GITHUB_WORKSPACE/built-to-offend/deploy/vermalio-prodigi-proxy.js"
           grep -q "defaultArea" "$GITHUB_WORKSPACE/built-to-offend/deploy/vermalio-prodigi-proxy.js"
           echo 'BTO basket, print-sheet and API patched source validates successfully.'
-      - name: Show patched checkout path
+      - name: Show patched checkout and AI paths
         shell: bash
         run: |
           set -euo pipefail
           cd .inspect/built-to-offend-production
-          grep -n -E 'BASKET_KEY|addToBasket|renderProdigiSheetBlob|printSheet|miniCart|API_CORS_HEADERS|redirectHostIfNeeded' public/app.js src/index.js | head -160
+          echo '=== GENERATOR ==='
+          grep -n -A90 -B10 'async function generateWithAI' src/index.js | head -140
+          echo '=== GENERATE ROUTE ==='
+          grep -n -A45 -B15 '/api/generate' src/index.js | head -100
+          echo '=== ERROR TEXT ==='
+          grep -n -A12 -B12 'tripped over a cable' src/index.js || true
