@@ -54,3 +54,5 @@ jobs:
             if [ -n "$v" ]; then echo "PRESENT:$n:LENGTH=${#v}"; found=1; fi
           done
           if [ "$found" = 0 ]; then echo NO_PRODUCTION_ENV_CLOUDFLARE_AUTH; fi
+
+# live probe refresh: 2026-08-28
