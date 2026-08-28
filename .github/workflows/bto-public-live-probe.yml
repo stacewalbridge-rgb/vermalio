@@ -43,5 +43,18 @@ jobs:
           if(h.ok!==true) process.exit(1);
           if(c.checkoutReady!==true||c.printer!=='prodigi') process.exit(2);
           NODE
+      - name: Verify live AI card generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          generated=$(curl -fsS --max-time 45 -X POST 'https://builttooffend.com/api/generate' \
+            -H 'content-type: application/json' \
+            --data '{"recipient":"Automated Test","occasion":"Birthday","age":"40","ammo":"Always late, steals chips, terrible dancer","brutality":5,"art":"monster"}')
+          echo "$generated"
+          GENERATED="$generated" node - <<'NODE'
+          const j=JSON.parse(process.env.GENERATED||'{}');
+          if(!j || typeof j!=='object' || j.error) process.exit(1);
+          if(JSON.stringify(j).length < 100) process.exit(2);
+          NODE
 
-# readiness refresh: 2026-08-28
+# readiness + AI refresh: 2026-08-28
