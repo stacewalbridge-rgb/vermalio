@@ -5,6 +5,7 @@ on:
     branches: [bto-prodigi-final-fix]
     paths:
       - ".github/workflows/bto-source-flow-diagnose.yml"
+      - ".github/bto-ai-reliability-fix.js"
   workflow_dispatch:
 
 permissions:
@@ -15,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct current BTO production source
+      - name: Reconstruct and validate patched production source
         shell: bash
         run: |
           set -euo pipefail
@@ -25,18 +26,24 @@ jobs:
           cd .inspect/built-to-offend-production
           patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
           node "$GITHUB_WORKSPACE/.github/bto-prodigi-spread-fix.js"
+          node "$GITHUB_WORKSPACE/.github/bto-ai-reliability-fix.js" "$PWD"
           node --check src/index.js
-          echo '--- AI / GENERATE ---'
-          grep -n -A180 -B30 'async function generate\|function generate\|/api/generate\|env.AI.run\|@cf/' src/index.js || true
-          echo '--- ORDER STATUS ---'
-          grep -n -A80 -B10 'function orderStatus\|async function orderStatus' src/index.js || true
-          echo '--- FULFIL ORDER ---'
-          grep -n -A130 -B10 'async function fulfillOrder' src/index.js || true
-          echo '--- STRIPE WEBHOOK ---'
-          grep -n -A100 -B10 'async function stripeWebhook' src/index.js || true
-          echo '--- ROUTES ---'
-          grep -n -A70 -B10 '/api/generate\|/api/order-status\|/api/stripe-webhook' src/index.js || true
-          echo '--- FRONTEND GENERATE HANDLER ---'
-          grep -n -A45 -B20 "fetch('/api/generate'" public/app.js || true
+          node --check public/app.js
 
-# diagnose AI 502: 2026-08-28
+          echo '--- REQUIRED BACKEND RELIABILITY SIGNALS ---'
+          grep -n 'AI_MODELS' src/index.js
+          grep -n 'monster_model_attempt_failed' src/index.js
+          grep -n 'final_safety_check_failed_closed' src/index.js
+          grep -n 'All live AI models failed' src/index.js
+
+          echo '--- REQUIRED FRONTEND FAIL-CLOSED SIGNALS ---'
+          grep -n 'Nothing has been ordered or charged' public/app.js
+          grep -n 'liveConfig.checkoutReady' public/app.js
+          grep -n 'regenerateWithAI' public/app.js
+
+          echo '--- FORBIDDEN FALLBACK SIGNALS ---'
+          if grep -q 'Using instant local Monster fallback' public/app.js; then echo 'ERROR: silent local generation fallback remains'; exit 21; fi
+          if grep -q 'renderCards(localGenerate(lastForm)' public/app.js; then echo 'ERROR: worse/softer still bypass AI'; exit 22; fi
+          if grep -q 'return { allowed: true, reason: "" };' src/index.js; then echo 'ERROR: fail-open moderation return remains'; exit 23; fi
+
+          echo 'PATCH_VALIDATION_OK'
