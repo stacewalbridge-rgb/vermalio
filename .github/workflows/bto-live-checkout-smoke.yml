@@ -48,3 +48,5 @@ jobs:
           if(u.searchParams.get('client_reference_id')!==process.env.ORDER_ID) process.exit(3);
           console.log('CHECKOUT_SMOKE_OK: ORDER THIS ONE can reach Stripe without payment.');
           NODE
+
+# smoke refresh: 2026-08-28
