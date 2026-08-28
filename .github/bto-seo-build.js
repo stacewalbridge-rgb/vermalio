@@ -4,10 +4,10 @@ require('./bto-ai-reliability-fix.js');
 require('./bto-ai-object-response-fix.js');
 
 // The legacy deployment workflow unsets CLOUDFLARE_API_TOKEN before later Wrangler calls.
-// Preserve the authenticated token under private backup env names and place a tiny npx
-// wrapper first on PATH for subsequent GitHub Actions steps. The wrapper restores the
-// token only inside the child process that invokes Wrangler, so KV/D1/deploy remain
-// non-interactive without changing or exposing the secret.
+// Preserve the authenticated token under private backup env names and place tiny wrappers
+// first on PATH for subsequent GitHub Actions steps. The npx wrapper restores Cloudflare
+// credentials. The curl wrapper gives a freshly deployed private Prodigi bridge a few
+// seconds to propagate before its one-time rotating bearer token is validated.
 (() => {
   const fs = require('fs');
   const path = require('path');
@@ -28,12 +28,15 @@ require('./bto-ai-object-response-fix.js');
   appendEnv('BTO_CF_ACCOUNT_ID_BACKUP', accountId);
 
   const realNpx = execFileSync('bash', ['-lc', 'command -v npx'], { encoding: 'utf8' }).trim();
+  const realCurl = execFileSync('bash', ['-lc', 'command -v curl'], { encoding: 'utf8' }).trim();
   if (!realNpx) throw new Error('npx executable was not found');
+  if (!realCurl) throw new Error('curl executable was not found');
 
   const wrapperDir = path.join(process.env.RUNNER_TEMP || '/tmp', 'bto-cloudflare-wrapper');
-  const wrapperPath = path.join(wrapperDir, 'npx');
   fs.mkdirSync(wrapperDir, { recursive: true });
-  const wrapper = [
+
+  const npxWrapperPath = path.join(wrapperDir, 'npx');
+  const npxWrapper = [
     '#!/usr/bin/env bash',
     'set -e',
     'if [ -n "${BTO_CF_API_TOKEN_BACKUP:-}" ]; then export CLOUDFLARE_API_TOKEN="$BTO_CF_API_TOKEN_BACKUP"; fi',
@@ -41,7 +44,22 @@ require('./bto-ai-object-response-fix.js');
     `exec ${JSON.stringify(realNpx)} "$@"`,
     '',
   ].join('\n');
-  fs.writeFileSync(wrapperPath, wrapper, { mode: 0o755 });
+  fs.writeFileSync(npxWrapperPath, npxWrapper, { mode: 0o755 });
+
+  const curlWrapperPath = path.join(wrapperDir, 'curl');
+  const curlWrapper = [
+    '#!/usr/bin/env bash',
+    'set -e',
+    'for arg in "$@"; do',
+    '  case "$arg" in',
+    '    *"/api/internal/bto/prodigi/health"*) sleep 8; break ;;',
+    '  esac',
+    'done',
+    `exec ${JSON.stringify(realCurl)} "$@"`,
+    '',
+  ].join('\n');
+  fs.writeFileSync(curlWrapperPath, curlWrapper, { mode: 0o755 });
+
   fs.appendFileSync(githubPath, `${wrapperDir}\n`);
-  console.log('Cloudflare CI credential preservation enabled for subsequent Wrangler steps.');
+  console.log('Cloudflare CI credentials preserved; Prodigi bridge propagation guard enabled.');
 })();
