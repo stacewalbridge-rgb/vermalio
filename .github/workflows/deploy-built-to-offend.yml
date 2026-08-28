@@ -300,11 +300,15 @@ jobs:
           ok=0
           for attempt in $(seq 1 18); do
             body=$(curl -fsS --max-time 20 https://builttooffend.com/api/health || true)
-            if echo "$body" | grep -q '"ok":true'; then ok=1; break; fi
+            if [[ "$body" == *'"ok":true'* ]]; then ok=1; break; fi
             sleep 5
           done
-          test "$ok" = 1
-          config=$(curl -fsS --max-time 20 https://builttooffend.com/api/config)
+          if [ "$ok" != 1 ]; then
+            echo "ERROR: live /api/health did not become ready"
+            exit 1
+          fi
+
+          config=$(curl -fsS --retry 3 --retry-delay 2 --max-time 20 https://builttooffend.com/api/config)
           echo "$config"
           CONFIG_JSON="$config" node <<'NODE'
           const cfg = JSON.parse(process.env.CONFIG_JSON);
@@ -314,10 +318,40 @@ jobs:
           }
           console.log('READY: Stripe payment -> Prodigi automatic fulfilment.');
           NODE
-          curl -fsS https://builttooffend.com/robots.txt | grep -q 'Sitemap: https://builttooffend.com/sitemap.xml'
-          curl -fsS https://builttooffend.com/sitemap.xml | grep -q 'novelty-cards.html'
-          curl -fsS https://builttooffend.com/novelty-cards.html | grep -qi 'novelty greeting cards'
-          curl -fsS https://builttooffend.com/ | grep -q 'rel="canonical" href="https://builttooffend.com/"'
-          curl -fsSI https://www.builttooffend.com/ | head -10
-          curl -fsSI https://builttooffend.co.uk/ | head -10
-          curl -fsSI https://www.builttooffend.co.uk/ | head -10
+
+          check_contains() {
+            local label="$1"
+            local url="$2"
+            local needle="$3"
+            local body
+            body=$(curl -fsS --retry 3 --retry-delay 2 --max-time 20 "$url") || {
+              echo "ERROR: $label could not be fetched: $url"
+              return 1
+            }
+            if [[ "$body" != *"$needle"* ]]; then
+              echo "ERROR: $label is missing expected text: $needle"
+              return 1
+            fi
+            echo "OK: $label"
+          }
+
+          check_status() {
+            local label="$1"
+            local url="$2"
+            local code
+            code=$(curl -sS -L -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 2 --max-time 20 "$url")
+            if [[ "$code" != 2* && "$code" != 3* ]]; then
+              echo "ERROR: $label returned HTTP $code: $url"
+              return 1
+            fi
+            echo "OK: $label HTTP $code"
+          }
+
+          check_contains "robots.txt sitemap declaration" "https://builttooffend.com/robots.txt" "Sitemap: https://builttooffend.com/sitemap.xml"
+          check_contains "sitemap novelty page" "https://builttooffend.com/sitemap.xml" "novelty-cards.html"
+          check_contains "novelty landing page" "https://builttooffend.com/novelty-cards.html" "Novelty Greeting Cards"
+          check_contains "homepage canonical" "https://builttooffend.com/" 'rel="canonical" href="https://builttooffend.com/"'
+          check_status "www .com alias" "https://www.builttooffend.com/"
+          check_status ".co.uk alias" "https://builttooffend.co.uk/"
+          check_status "www .co.uk alias" "https://www.builttooffend.co.uk/"
+          echo "READY: live ordering and SEO verification passed."
