@@ -49,3 +49,5 @@ jobs:
           grep -qi 'builttooffend.com' /tmp/sitemap.xml
           grep -qi '<title' /tmp/home.html
           grep -qi 'name="description"' /tmp/home.html
+
+# live SEO audit refresh: 2026-08-28
