@@ -1,0 +1,89 @@
+name: BTO final live acceptance v2
+
+on:
+  push:
+    branches: [built-to-offend-deploy]
+    paths:
+      - ".github/workflows/bto-final-live-acceptance-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Full non-charging customer path
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=https://builttooffend.com
+
+          echo '== domains =='
+          for host in builttooffend.com www.builttooffend.com builttooffend.co.uk www.builttooffend.co.uk; do
+            code=$(curl -sS -L --max-time 20 -o /tmp/h.json -w '%{http_code}' "https://$host/api/health")
+            test "$code" = 200
+            node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/h.json","utf8"));if(j.ok!==true||j.service!=="built-to-offend"||j.hostname!=="builttooffend.com")process.exit(1)'
+          done
+
+          echo '== config =='
+          config=$(curl -fsS --max-time 20 "$base/api/config")
+          CONFIG="$config" node - <<'NODE'
+          const c=JSON.parse(process.env.CONFIG);
+          if(c.checkoutReady!==true) throw new Error('checkoutReady is not true');
+          if(c.printer!=='prodigi') throw new Error('printer is not prodigi');
+          if(c.cardPricePence!==499||c.photoAddOnPence!==100||c.ukShippingPence!==199||c.currency!=='gbp') throw new Error('price config mismatch');
+          NODE
+
+          echo '== live AI generation =='
+          generated=$(curl -fsS --max-time 45 -X POST -H 'content-type: application/json' \
+            --data '{"recipient":"Acceptance Test","occasion":"Birthday","relationship":"Friend","tone":"playful","ammo":"always late","quote":"","avoid":"","brutality":4,"art":"monster"}' \
+            "$base/api/generate")
+          GENERATED="$generated" node - <<'NODE'
+          const j=JSON.parse(process.env.GENERATED);
+          if(!Array.isArray(j.versions)||j.versions.length!==3) throw new Error('AI did not return exactly 3 versions');
+          for(const v of j.versions){if(!v.label||!v.front||!v.inside)throw new Error('AI card incomplete');}
+          NODE
+
+          echo '== create draft order =='
+          order=$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
+            --data '{"recipient":"BTO-ACCEPTANCE-NO-FULFIL","occasion":"Birthday","brutality":4,"label":"ACCEPTANCE","front":"BTO ACCEPTANCE TEST","inside":"Automated draft only. Do not fulfil.","art":"monster"}' \
+            "$base/api/orders")
+          order_id=$(ORDER="$order" node -e 'const j=JSON.parse(process.env.ORDER);process.stdout.write(j.orderId||"")')
+          token=$(ORDER="$order" node -e 'const j=JSON.parse(process.env.ORDER);process.stdout.write(j.uploadToken||"")')
+          test -n "$order_id"; test -n "$token"
+          printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z3ioAAAAASUVORK5CYII=' | base64 -d >/tmp/a.png
+
+          echo '== reject wrong artwork token =='
+          bad=$(curl -sS --max-time 20 -o /tmp/bad.json -w '%{http_code}' -X PUT \
+            -H 'content-type: image/png' -H 'x-order-token: deliberately-wrong' --data-binary @/tmp/a.png \
+            "$base/api/order-asset?order_id=$order_id&kind=outside")
+          test "$bad" = 403
+
+          echo '== secure artwork upload =='
+          for kind in outside inside; do
+            code=$(curl -sS --max-time 30 -o /tmp/upload.json -w '%{http_code}' -X PUT \
+              -H 'content-type: image/png' -H "x-order-token: $token" --data-binary @/tmp/a.png \
+              "$base/api/order-asset?order_id=$order_id&kind=$kind")
+            test "$code" = 200
+            KIND="$kind" node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/upload.json","utf8"));if(j.ok!==true||j.kind!==process.env.KIND)process.exit(1)'
+          done
+
+          echo '== Stripe checkout handoff (NO PAYMENT) =='
+          checkout_code=$(curl -sS --max-time 30 -o /tmp/checkout.json -w '%{http_code}' -X POST -H 'content-type: application/json' \
+            --data "{\"orderId\":\"$order_id\",\"uploadToken\":\"$token\"}" "$base/api/checkout")
+          test "$checkout_code" = 200
+          ORDER_ID="$order_id" node - <<'NODE'
+          const fs=require('fs');const j=JSON.parse(fs.readFileSync('/tmp/checkout.json','utf8'));
+          const u=new URL(j.checkoutUrl);
+          if(u.hostname!=='buy.stripe.com') throw new Error('not Stripe checkout');
+          if(u.searchParams.get('client_reference_id')!==process.env.ORDER_ID) throw new Error('Stripe order reference mismatch');
+          NODE
+
+          echo '== Prodigi bridge + webhook receiver health =='
+          code=$(curl -sS --max-time 20 -o /tmp/prodigi.json -w '%{http_code}' https://vermalio.stace-walbridge.workers.dev/api/prodigi/webhook/health)
+          test "$code" = 200
+          node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/prodigi.json","utf8"));if(j.ok!==true)process.exit(1)'
+
+          echo 'BTO_FINAL_ACCEPTANCE_PASS'
