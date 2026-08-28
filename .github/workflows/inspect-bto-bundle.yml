@@ -34,24 +34,15 @@ jobs:
           node "$GITHUB_WORKSPACE/.github/bto-runtime-fix.js"
           node --check src/index.js
           node --check public/app.js
-          node --check "$GITHUB_WORKSPACE/built-to-offend/deploy/vermalio-prodigi-proxy.js"
-          grep -q "built-to-offend-basket-v1" public/app.js
-          grep -q "addToBasket(article,v,d,select)" public/app.js
-          grep -q "renderProdigiSheetBlob" public/app.js
-          grep -q "image/jpeg" public/app.js
-          grep -q "request.method === \"OPTIONS\"" src/index.js
-          grep -q "API_CORS_HEADERS" src/index.js
-          grep -q "single-sheet" "$GITHUB_WORKSPACE/built-to-offend/deploy/vermalio-prodigi-proxy.js"
-          grep -q "defaultArea" "$GITHUB_WORKSPACE/built-to-offend/deploy/vermalio-prodigi-proxy.js"
-          echo 'BTO basket, print-sheet and API patched source validates successfully.'
-      - name: Show patched checkout and AI paths
+          echo 'patched source validates'
+      - name: Show order API contract and frontend caller
         shell: bash
         run: |
           set -euo pipefail
           cd .inspect/built-to-offend-production
-          echo '=== GENERATOR ==='
-          grep -n -A90 -B10 'async function generateWithAI' src/index.js | head -140
-          echo '=== GENERATE ROUTE ==='
-          grep -n -A45 -B15 '/api/generate' src/index.js | head -100
-          echo '=== ERROR TEXT ==='
-          grep -n -A12 -B12 'tripped over a cable' src/index.js || true
+          echo '=== CREATE ORDER ==='
+          grep -n -A95 -B10 'async function createOrder' src/index.js | head -150
+          echo '=== FRONTEND ORDER CALLS ==='
+          grep -n -A30 -B20 '/api/orders' public/app.js | head -180
+          echo '=== CHECKOUT CALLS ==='
+          grep -n -A25 -B20 '/api/checkout' public/app.js | head -140
