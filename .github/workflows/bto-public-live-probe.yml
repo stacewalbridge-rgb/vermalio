@@ -43,3 +43,5 @@ jobs:
           if(h.ok!==true) process.exit(1);
           if(c.checkoutReady!==true||c.printer!=='prodigi') process.exit(2);
           NODE
+
+# readiness refresh: 2026-08-28
