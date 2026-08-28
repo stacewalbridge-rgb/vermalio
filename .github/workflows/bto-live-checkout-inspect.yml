@@ -19,7 +19,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsS --max-time 30 'https://builttooffend.com/app.js?cb=live-inspect' -o /tmp/app.js
-          echo '=== LIVE API CALLS ==='
-          grep -nE "apiJson\(|fetch\(|/api/|checkout|uploadAsset|createOrder|generate|monster" /tmp/app.js | head -260
+          echo '=== LIVE CUSTOMER FLOW ==='
+          nl -ba /tmp/app.js | sed -n '1,190p'
 
-# live inspect refresh: 2026-08-28
+# full customer-flow inspect: 2026-08-28
