@@ -1,6 +1,7 @@
 // Preserve the existing SEO build, then apply the production AI/order reliability hardening.
 require('./bto-seo-original.js');
 require('./bto-ai-reliability-fix.js');
+require('./bto-ai-object-response-fix.js');
 
 // The legacy deployment workflow unsets CLOUDFLARE_API_TOKEN before later Wrangler calls.
 // Preserve the authenticated token under private backup env names and place a tiny npx
