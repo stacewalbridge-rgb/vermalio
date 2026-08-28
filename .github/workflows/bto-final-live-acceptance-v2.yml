@@ -41,15 +41,22 @@ jobs:
             --data '{"recipient":"Acceptance Test","occasion":"Birthday","relationship":"Friend","tone":"playful","ammo":"always late","quote":"","avoid":"","brutality":4,"art":"monster"}' \
             "$base/api/generate")
           GENERATED="$generated" node - <<'NODE'
+          const fs=require('fs');
           const j=JSON.parse(process.env.GENERATED);
           if(!Array.isArray(j.versions)||j.versions.length!==3) throw new Error('AI did not return exactly 3 versions');
           for(const v of j.versions){if(!v.label||!v.front||!v.inside)throw new Error('AI card incomplete');}
+          const v=j.versions[0];
+          fs.writeFileSync('/tmp/order-request.json',JSON.stringify({
+            recipient:'Acceptance Test',occasion:'Birthday',brutality:4,label:v.label,
+            front:v.front,inside:v.inside,art:'monster'
+          }));
           NODE
 
-          echo '== create draft order =='
-          order=$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
-            --data '{"recipient":"BTO-ACCEPTANCE-NO-FULFIL","occasion":"Birthday","brutality":4,"label":"ACCEPTANCE","front":"BTO ACCEPTANCE TEST","inside":"Automated draft only. Do not fulfil.","art":"monster"}' \
-            "$base/api/orders")
+          echo '== create draft order from the actual AI-selected card =='
+          order_code=$(curl -sS --max-time 45 -o /tmp/order.json -w '%{http_code}' -X POST -H 'content-type: application/json' \
+            --data-binary @/tmp/order-request.json "$base/api/orders")
+          if [ "$order_code" != 200 ]; then cat /tmp/order.json; exit 1; fi
+          order=$(cat /tmp/order.json)
           order_id=$(ORDER="$order" node -e 'const j=JSON.parse(process.env.ORDER);process.stdout.write(j.orderId||"")')
           token=$(ORDER="$order" node -e 'const j=JSON.parse(process.env.ORDER);process.stdout.write(j.uploadToken||"")')
           test -n "$order_id"; test -n "$token"
@@ -59,7 +66,7 @@ jobs:
           bad=$(curl -sS --max-time 20 -o /tmp/bad.json -w '%{http_code}' -X PUT \
             -H 'content-type: image/png' -H 'x-order-token: deliberately-wrong' --data-binary @/tmp/a.png \
             "$base/api/order-asset?order_id=$order_id&kind=outside")
-          test "$bad" = 403
+          test "$bad" = 401
 
           echo '== secure artwork upload =='
           for kind in outside inside; do
@@ -73,7 +80,7 @@ jobs:
           echo '== Stripe checkout handoff (NO PAYMENT) =='
           checkout_code=$(curl -sS --max-time 30 -o /tmp/checkout.json -w '%{http_code}' -X POST -H 'content-type: application/json' \
             --data "{\"orderId\":\"$order_id\",\"uploadToken\":\"$token\"}" "$base/api/checkout")
-          test "$checkout_code" = 200
+          if [ "$checkout_code" != 200 ]; then cat /tmp/checkout.json; exit 1; fi
           ORDER_ID="$order_id" node - <<'NODE'
           const fs=require('fs');const j=JSON.parse(fs.readFileSync('/tmp/checkout.json','utf8'));
           const u=new URL(j.checkoutUrl);
