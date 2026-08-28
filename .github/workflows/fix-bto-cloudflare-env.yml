@@ -1,0 +1,52 @@
+name: Repair BTO Cloudflare token handling
+
+on:
+  push:
+    branches: [built-to-offend-deploy]
+    paths:
+      - ".github/workflows/fix-bto-cloudflare-env.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: built-to-offend-deploy
+          fetch-depth: 0
+
+      - name: Remove destructive Cloudflare token unsets
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=.github/workflows/deploy-built-to-offend.yml
+          test -f "$file"
+          before=$(grep -c 'unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID' "$file" || true)
+          test "$before" -gt 0
+          sed -i '/^[[:space:]]*unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID[[:space:]]*$/d' "$file"
+          after=$(grep -c 'unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID' "$file" || true)
+          test "$after" -eq 0
+          git diff --check
+
+      - name: Commit corrected deployment workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/deploy-built-to-offend.yml
+          git commit -m 'Keep Cloudflare API token available during BTO deploy'
+          git push origin HEAD:built-to-offend-deploy
+
+      - name: Dispatch corrected production deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run deploy-built-to-offend.yml --ref built-to-offend-deploy
