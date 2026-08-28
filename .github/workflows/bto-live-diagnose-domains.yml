@@ -1,0 +1,45 @@
+name: Diagnose BTO live domains and AI
+
+on:
+  push:
+    branches: [built-to-offend-deploy]
+    paths:
+      - ".github/workflows/bto-live-diagnose-domains.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Diagnose live endpoints
+        shell: bash
+        run: |
+          set -u
+          base=https://builttooffend.com
+          failed=0
+          echo '== domain health =='
+          for host in builttooffend.com www.builttooffend.com builttooffend.co.uk www.builttooffend.co.uk; do
+            code=$(curl -sS -L --max-time 20 -o /tmp/h.json -w '%{http_code}' "https://$host/api/health" || echo CURLFAIL)
+            body=$(cat /tmp/h.json 2>/dev/null || true)
+            echo "HOST=$host CODE=$code BODY=$body"
+            if [ "$code" != 200 ]; then failed=1; fi
+          done
+
+          echo '== main config =='
+          code=$(curl -sS --max-time 20 -o /tmp/config.json -w '%{http_code}' "$base/api/config" || echo CURLFAIL)
+          echo "CONFIG_CODE=$code BODY=$(cat /tmp/config.json 2>/dev/null || true)"
+          if [ "$code" != 200 ]; then failed=1; fi
+
+          echo '== AI generation =='
+          code=$(curl -sS --max-time 60 -o /tmp/generate.json -w '%{http_code}' -X POST -H 'content-type: application/json' \
+            --data '{"recipient":"Acceptance Test","occasion":"Birthday","relationship":"Friend","tone":"playful","ammo":"always late","quote":"","avoid":"","brutality":4,"art":"monster"}' \
+            "$base/api/generate" || echo CURLFAIL)
+          echo "GENERATE_CODE=$code"
+          cat /tmp/generate.json 2>/dev/null || true
+          echo
+          if [ "$code" != 200 ]; then failed=1; fi
+
+          exit "$failed"
