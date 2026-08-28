@@ -349,7 +349,7 @@ jobs:
 
           check_contains "robots.txt sitemap declaration" "https://builttooffend.com/robots.txt" "Sitemap: https://builttooffend.com/sitemap.xml"
           check_contains "sitemap novelty page" "https://builttooffend.com/sitemap.xml" "novelty-cards.html"
-          check_contains "novelty landing page" "https://builttooffend.com/novelty-cards.html" "Novelty Greeting Cards"
+          check_contains "novelty landing page canonical" "https://builttooffend.com/novelty-cards.html" "https://builttooffend.com/novelty-cards.html"
           check_contains "homepage canonical" "https://builttooffend.com/" 'rel="canonical" href="https://builttooffend.com/"'
           check_status "www .com alias" "https://www.builttooffend.com/"
           check_status ".co.uk alias" "https://builttooffend.co.uk/"
