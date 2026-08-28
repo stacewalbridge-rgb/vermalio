@@ -92,3 +92,5 @@ jobs:
           node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync("/tmp/prodigi-health.json","utf8")); if(j.ok!==true) process.exit(1)'
 
           echo 'ACCEPTANCE PASS'
+
+# Live acceptance rerun after permanent Cloudflare CI credential repair.
