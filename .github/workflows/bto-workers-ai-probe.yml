@@ -1,0 +1,54 @@
+name: Probe BTO Workers AI models
+
+on:
+  push:
+    branches: [built-to-offend-deploy]
+    paths:
+      - ".github/workflows/bto-workers-ai-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Probe direct Workers AI REST models
+        shell: bash
+        run: |
+          set -u
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          failed=0
+          for model in '@cf/qwen/qwen3-30b-a3b-fp8' '@cf/zai-org/glm-4.7-flash' '@cf/meta/llama-3.3-70b-instruct-fp8-fast'; do
+            safe=$(echo "$model" | tr '/@.' '____')
+            echo "===== MODEL $model / simple prompt ====="
+            start=$(date +%s)
+            code=$(curl -sS --max-time 90 -o "/tmp/$safe.json" -w '%{http_code}' \
+              -X POST "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/$model" \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              -H 'Content-Type: application/json' \
+              --data '{"messages":[{"role":"user","content":"Reply with exactly: OK"}],"max_tokens":32,"temperature":0}' || echo CURLFAIL)
+            elapsed=$(( $(date +%s) - start ))
+            echo "HTTP=$code ELAPSED=${elapsed}s"
+            cat "/tmp/$safe.json" 2>/dev/null || true
+            echo
+
+            echo "===== MODEL $model / BTO JSON prompt ====="
+            start=$(date +%s)
+            code2=$(curl -sS --max-time 90 -o "/tmp/${safe}-bto.json" -w '%{http_code}' \
+              -X POST "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/$model" \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              -H 'Content-Type: application/json' \
+              --data '{"messages":[{"role":"system","content":"Return JSON only. No markdown. Schema: {\"versions\":[{\"label\":\"THE SAVAGE\",\"front\":\"text\",\"inside\":\"text\"},{\"label\":\"THE BASTARD\",\"front\":\"text\",\"inside\":\"text\"},{\"label\":\"THE MONSTER\",\"front\":\"text\",\"inside\":\"text\"}]}."},{"role":"user","content":"Create three short playful birthday-card versions for a friend who is always late."}],"max_tokens":500,"temperature":0.4}' || echo CURLFAIL)
+            elapsed2=$(( $(date +%s) - start ))
+            echo "HTTP=$code2 ELAPSED=${elapsed2}s"
+            cat "/tmp/${safe}-bto.json" 2>/dev/null || true
+            echo
+            if [ "$code" != 200 ] || [ "$code2" != 200 ]; then failed=1; fi
+          done
+          exit "$failed"
