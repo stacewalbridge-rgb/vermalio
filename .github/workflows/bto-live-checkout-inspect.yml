@@ -20,4 +20,6 @@ jobs:
           set -euo pipefail
           curl -fsS --max-time 30 'https://builttooffend.com/app.js?cb=live-inspect' -o /tmp/app.js
           echo '=== LIVE API CALLS ==='
-          grep -nE "apiJson\(|fetch\(|/api/|checkout|uploadAsset|createOrder" /tmp/app.js | head -220
+          grep -nE "apiJson\(|fetch\(|/api/|checkout|uploadAsset|createOrder|generate|monster" /tmp/app.js | head -260
+
+# live inspect refresh: 2026-08-28
