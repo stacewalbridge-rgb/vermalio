@@ -1,0 +1,1 @@
+This folder contains organic growth planning assets only. It must not alter runtime checkout, Stripe or Prodigi fulfilment code.
