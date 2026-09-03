@@ -1,0 +1,1 @@
+Video files are packaged separately in the ChatGPT conversation artifact `Built-To-Offend-Viral-Video-Pack.zip`. This repo file records the corresponding campaign concepts only.
