@@ -1,0 +1,1 @@
+Observed live UK SERPs strongly cluster rude birthday cards by recipient, milestone and personalisation/photo intent. Use that structure to align social scenarios with commercial landing pages without creating duplicate doorway pages.
