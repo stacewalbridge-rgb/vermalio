@@ -1,0 +1,1 @@
+Publishing note: this chat currently has no direct TikTok or Instagram publishing connector; generated MP4s are ready for manual/platform-native upload.
