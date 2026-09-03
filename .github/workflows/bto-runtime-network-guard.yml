@@ -1,0 +1,200 @@
+name: BTO runtime network guard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bto-runtime-network-guard.yml"
+  workflow_run:
+    workflows: ["Deploy Built To Offend to Cloudflare"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'built-to-offend-deploy')
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: "false"
+      BTO_DIR: ${{ github.workspace }}/.guard/built-to-offend-production
+      PRODIGI_PROXY_URL: https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi
+      PRODIGI_SKU: GLOBAL-GRE-MOH-7X5-DIR
+
+    steps:
+      - name: Check out current Built To Offend production branch
+        uses: actions/checkout@v4
+        with:
+          ref: built-to-offend-deploy
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build production shop with network reliability fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check .github/bto-fetch-reliability-fix.js
+          rm -rf .guard
+          mkdir -p .guard
+          cat built-to-offend/chunk-00.b64 built-to-offend/chunk-01.b64 built-to-offend/chunk-02.b64 \
+            | base64 -d > .guard/built-to-offend.tar.xz
+          tar -xJf .guard/built-to-offend.tar.xz -C .guard
+          test -f "$BTO_DIR/src/index.js"
+          test -f "$BTO_DIR/public/app.js"
+          cp built-to-offend/deploy/0002_secure_tokens.sql "$BTO_DIR/migrations/0002_secure_tokens.sql"
+          cd "$BTO_DIR"
+          patch -p0 --forward < "$GITHUB_WORKSPACE/built-to-offend/deploy/bto-source.patch"
+          node "$GITHUB_WORKSPACE/.github/bto-seo-build.js"
+          node "$GITHUB_WORKSPACE/.github/bto-fetch-reliability-fix.js"
+          npm install --no-audit --no-fund
+          node --check src/index.js
+          node --check public/app.js
+          grep -q 'BTO_FETCH_RELIABILITY_V1' public/app.js
+          grep -q 'API_CORS_HEADERS' src/index.js
+          if grep -Fq "Promise.all([uploadAsset(order.orderId,order.uploadToken,'outside'" public/app.js; then
+            echo 'Parallel artwork upload is still present.'
+            exit 1
+          fi
+
+      - name: Authenticate stored Cloudflare deployment access
+        working-directory: .guard/built-to-offend-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo 'Stored Cloudflare API token is unavailable; refusing to alter the live shop.'
+            exit 1
+          fi
+          npx wrangler whoami
+
+      - name: Verify live Prodigi bridge before changing shop
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS --max-time 30 -o /tmp/bto-prodigi-health.json -w '%{http_code}' \
+            "$PRODIGI_PROXY_URL/health?sku=$PRODIGI_SKU")
+          cat /tmp/bto-prodigi-health.json
+          test "$code" = 200
+          node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/bto-prodigi-health.json","utf8"));if(j.ok!==true)process.exit(1)'
+
+      - name: Bind existing Built To Offend storage and live settings
+        working-directory: .guard/built-to-offend-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler kv namespace list >/tmp/bto-guard-kv.json
+          npx wrangler d1 list --json >/tmp/bto-guard-d1.json
+          node <<'NODE'
+          const fs=require('fs');
+          const kv=JSON.parse(fs.readFileSync('/tmp/bto-guard-kv.json','utf8'));
+          const kvHit=kv.find(x=>x.title==='BTO_PRIVATE_ASSETS'||x.title==='built-to-offend-private-assets'||String(x.title||'').endsWith('-BTO_PRIVATE_ASSETS'));
+          if(!kvHit?.id) throw new Error('Built To Offend private artwork KV namespace was not found');
+          const d1=JSON.parse(fs.readFileSync('/tmp/bto-guard-d1.json','utf8'));
+          const db=d1.find(x=>x.name==='built-to-offend-db');
+          const dbid=db?.uuid||db?.id||db?.database_id;
+          if(!dbid) throw new Error('built-to-offend-db was not found');
+          const p='wrangler.jsonc';
+          const cfg=JSON.parse(fs.readFileSync(p,'utf8'));
+          delete cfg.r2_buckets;
+          cfg.kv_namespaces=[{binding:'ASSET_BUCKET',id:kvHit.id}];
+          cfg.d1_databases=[{binding:'DB',database_name:'built-to-offend-db',database_id:dbid}];
+          cfg.vars={
+            ...(cfg.vars||{}),
+            PUBLIC_BASE_URL:'https://builttooffend.com',
+            CARD_PRICE_PENCE:'499',
+            UK_SHIPPING_PENCE:'199',
+            PHOTO_ADDON_PENCE:'100',
+            STRIPE_STANDARD_PAYMENT_LINK:'https://buy.stripe.com/14A4gA3IEfWa3O7a5J8so02',
+            STRIPE_PHOTO_PAYMENT_LINK:'https://buy.stripe.com/00w8wQ92YcJY4Sb1zd8so03',
+            PRINT_PROVIDER:'prodigi',
+            PRODIGI_ENV:'live',
+            PRODIGI_SKU:'GLOBAL-GRE-MOH-7X5-DIR',
+            PRODIGI_SHIPPING_METHOD:'Budget',
+            PRODIGI_PROXY_URL:'https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi'
+          };
+          fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\n');
+          NODE
+          npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc
+
+      - name: Deploy repaired Worker and site assets
+        working-directory: .guard/built-to-offend-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --dry-run --config wrangler.jsonc
+          npx wrangler deploy --config wrangler.jsonc
+
+      - name: Full non-charging mobile/network acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=https://builttooffend.com
+
+          for attempt in $(seq 1 18); do
+            if curl -fsS --max-time 20 "$base/app.js" | grep -q 'BTO_FETCH_RELIABILITY_V1'; then break; fi
+            sleep 4
+          done
+          curl -fsS --max-time 20 "$base/app.js" | grep -q 'BTO_FETCH_RELIABILITY_V1'
+          curl -fsS --max-time 20 "$base/api/health" | grep -q '"ok":true'
+
+          config=$(curl -fsS --max-time 20 "$base/api/config")
+          CONFIG="$config" node -e 'const c=JSON.parse(process.env.CONFIG);if(c.checkoutReady!==true||c.printer!=="prodigi")process.exit(1)'
+
+          echo '== API alias/preflight protection =='
+          for host in builttooffend.com www.builttooffend.com builttooffend.co.uk www.builttooffend.co.uk; do
+            code=$(curl -sS --max-time 20 -o /tmp/options.txt -w '%{http_code}' -X OPTIONS \
+              -H 'Origin: https://builttooffend.com' \
+              -H 'Access-Control-Request-Method: PUT' \
+              -H 'Access-Control-Request-Headers: content-type,x-order-token' \
+              "https://$host/api/order-asset")
+            test "$code" = 204
+          done
+
+          echo '== Live AI through non-canonical host without POST redirect =='
+          code=$(curl -sS --max-time 50 -o /tmp/alias-generate.json -w '%{http_code}' -X POST \
+            -H 'content-type: application/json' \
+            --data '{"recipient":"Network Test","occasion":"Birthday","relationship":"Friend","tone":"playful","ammo":"always late","quote":"","avoid":"","brutality":4,"art":"monster"}' \
+            'https://www.builttooffend.com/api/generate')
+          test "$code" = 200
+          node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/alias-generate.json","utf8"));if(!Array.isArray(j.versions)||j.versions.length<3)process.exit(1)'
+
+          echo '== Draft + substantial sequential artwork upload =='
+          VERSIONS=$(cat /tmp/alias-generate.json) node <<'NODE'
+          const fs=require('fs');const j=JSON.parse(process.env.VERSIONS);const v=j.versions[0];
+          fs.writeFileSync('/tmp/bto-order.json',JSON.stringify({recipient:'BTO-NETWORK-ACCEPTANCE',occasion:'Birthday',brutality:4,label:v.label,front:v.front,inside:v.inside,art:'monster'}));
+          NODE
+          curl -fsS --max-time 45 -X POST -H 'content-type: application/json' --data-binary @/tmp/bto-order.json "$base/api/orders" >/tmp/order-result.json
+          order_id=$(node -e 'const j=require("/tmp/order-result.json");process.stdout.write(j.orderId||"")')
+          token=$(node -e 'const j=require("/tmp/order-result.json");process.stdout.write(j.uploadToken||"")')
+          test -n "$order_id"; test -n "$token"
+
+          dd if=/dev/zero of=/tmp/bto-network-art.jpg bs=1048576 count=2 status=none
+          for kind in outside inside; do
+            code=$(curl -sS --max-time 45 -o /tmp/upload-result.json -w '%{http_code}' -X PUT \
+              -H 'content-type: image/jpeg' -H "x-order-token: $token" \
+              --data-binary @/tmp/bto-network-art.jpg \
+              "$base/api/order-asset?order_id=$order_id&kind=$kind")
+            if [ "$code" != 200 ]; then cat /tmp/upload-result.json; exit 1; fi
+          done
+
+          echo '== Stripe handoff without payment =='
+          code=$(curl -sS --max-time 30 -o /tmp/checkout-result.json -w '%{http_code}' -X POST \
+            -H 'content-type: application/json' \
+            --data "{\"orderId\":\"$order_id\",\"uploadToken\":\"$token\"}" \
+            "$base/api/checkout")
+          if [ "$code" != 200 ]; then cat /tmp/checkout-result.json; exit 1; fi
+          ORDER_ID="$order_id" node - <<'NODE'
+          const fs=require('fs');const j=JSON.parse(fs.readFileSync('/tmp/checkout-result.json','utf8'));const u=new URL(j.checkoutUrl);
+          if(u.hostname!=='buy.stripe.com'||u.searchParams.get('client_reference_id')!==process.env.ORDER_ID)process.exit(1);
+          NODE
+
+          echo 'BTO_NETWORK_ACCEPTANCE_PASS: AI -> substantial artwork uploads -> Stripe handoff; Prodigi remains live.'
