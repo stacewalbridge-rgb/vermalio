@@ -1,0 +1,1 @@
+Current live UK SERP examples show recipient filters (Mum, Dad, friend, colleague, partner), milestone ages and photo/personalised options alongside rude/adult-humour collections. Treat these as prioritisation signals, not a reason to keyword-stuff.
