@@ -1,0 +1,1 @@
+Campaign safety: use fictional/composite targets, no doxxing, protected-class attacks, non-consensual private data or fake customer testimonials. Keep humour directed at ordinary quirks and consensual roast-style banter.
