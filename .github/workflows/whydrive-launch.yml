@@ -73,19 +73,36 @@ jobs:
             --commit-dirty=true | tee /tmp/whydrive-deploy.txt
           grep -Eo 'https://[^ ]+\.pages\.dev' /tmp/whydrive-deploy.txt | tail -1 | tee /tmp/whydrive-url.txt || true
 
+      - name: Point WhyDrive DNS to Cloudflare Pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          AUTH="Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"
+          ZONE_JSON=$(curl --max-time 30 -sS "https://api.cloudflare.com/client/v4/zones?name=whydrive.co.uk" -H "$AUTH")
+          ZONE_ID=$(printf '%s' "$ZONE_JSON" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);if(!j.success||!j.result?.[0]?.id)process.exit(2);process.stdout.write(j.result[0].id)})")
+          for name in whydrive.co.uk www.whydrive.co.uk; do
+            RECORDS=$(curl --max-time 30 -sS "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?name=${name}" -H "$AUTH")
+            printf '%s' "$RECORDS" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);for(const r of (j.result||[]))if(['A','AAAA','CNAME'].includes(r.type))console.log(r.id)})" | while read -r id; do
+              [ -z "$id" ] || curl --max-time 30 -sS -X DELETE "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${id}" -H "$AUTH" >/dev/null
+            done
+            curl --max-time 30 -sS -X POST "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records" \
+              -H "$AUTH" -H "Content-Type: application/json" \
+              --data "{\"type\":\"CNAME\",\"name\":\"${name}\",\"content\":\"whydrive.pages.dev\",\"ttl\":1,\"proxied\":true}" | tee "/tmp/dns-${name}.json"
+          done
+
       - name: Attach whydrive.co.uk custom domains
         shell: bash
         run: |
           set -euo pipefail
           for domain in whydrive.co.uk www.whydrive.co.uk; do
-            echo "Attaching $domain"
             curl --max-time 30 -sS -X POST \
               "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${PROJECT_NAME}/domains" \
               -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
               -H "Content-Type: application/json" \
-              --data "{\"name\":\"${domain}\"}" | tee "/tmp/${domain}.json"
+              --data "{\"name\":\"${domain}\"}" || true
             echo
           done
+          sleep 5
 
       - name: Report deployment
         shell: bash
@@ -93,7 +110,6 @@ jobs:
           set -euo pipefail
           echo "WhyDrive Pages project: https://${PROJECT_NAME}.pages.dev"
           echo "Target domains: https://whydrive.co.uk and https://www.whydrive.co.uk"
-          echo "Custom domain status:"
           curl --max-time 30 -sS \
             "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${PROJECT_NAME}/domains" \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" || true
