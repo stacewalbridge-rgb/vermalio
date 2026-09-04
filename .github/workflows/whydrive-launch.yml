@@ -10,9 +10,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: whydrive-cloudflare-launch
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -24,6 +29,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Fetch approved WhyDrive light website
         shell: bash
@@ -36,27 +42,33 @@ jobs:
           grep -q 'assets/whydrive-logo-light.jpg' .whydrive-source/whydrive-site/index.html
           grep -q 'AI-powered. Locally driven.' .whydrive-source/whydrive-site/index.html
 
+      - name: Install Cloudflare deployment tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund wrangler@4
+
       - name: Authenticate Cloudflare
         shell: bash
         run: |
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
-          npx --yes wrangler@4 whoami
+          timeout 45s npx wrangler whoami
 
       - name: Ensure WhyDrive Pages project exists
         shell: bash
         run: |
           set -euo pipefail
-          if ! npx --yes wrangler@4 pages project list | grep -q "${PROJECT_NAME}"; then
-            npx --yes wrangler@4 pages project create "${PROJECT_NAME}" --production-branch=main
+          if ! timeout 45s npx wrangler pages project list | grep -q "${PROJECT_NAME}"; then
+            timeout 60s npx wrangler pages project create "${PROJECT_NAME}" --production-branch=main
           fi
 
       - name: Deploy WhyDrive website
         shell: bash
         run: |
           set -euo pipefail
-          npx --yes wrangler@4 pages deploy .whydrive-source/whydrive-site \
+          timeout 120s npx wrangler pages deploy .whydrive-source/whydrive-site \
             --project-name="${PROJECT_NAME}" \
             --branch=main \
             --commit-dirty=true | tee /tmp/whydrive-deploy.txt
@@ -68,7 +80,7 @@ jobs:
           set -euo pipefail
           for domain in whydrive.co.uk www.whydrive.co.uk; do
             echo "Attaching $domain"
-            curl -sS -X POST \
+            curl --max-time 30 -sS -X POST \
               "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${PROJECT_NAME}/domains" \
               -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
               -H "Content-Type: application/json" \
@@ -83,6 +95,6 @@ jobs:
           echo "WhyDrive Pages project: https://${PROJECT_NAME}.pages.dev"
           echo "Target domains: https://whydrive.co.uk and https://www.whydrive.co.uk"
           echo "Custom domain status:"
-          curl -sS \
+          curl --max-time 30 -sS \
             "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${PROJECT_NAME}/domains" \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" || true
