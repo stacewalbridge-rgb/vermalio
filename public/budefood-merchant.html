@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>BudeFood Merchant MVP</title>
+<style>
+:root{--bg:#090909;--card:#151515;--card2:#1c1c1c;--gold:#d9ad4d;--gold2:#f0d178;--text:#f5f1e7;--muted:#a5a095;--line:#303030;--green:#40c984;--red:#f26f63}
+*{box-sizing:border-box}body{margin:0;background:#080808;color:var(--text);font-family:Inter,Arial,sans-serif}.app{max-width:520px;margin:auto;padding:14px 14px 34px}
+.brand{display:flex;align-items:center;justify-content:space-between}.bf{font-weight:900;font-size:27px}.bf b{color:var(--gold)}.powered{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px}.wmark{width:24px;height:24px;border:1px solid var(--gold);border-radius:50%;display:grid;place-items:center;color:var(--gold);font-weight:900}
+.status{margin:14px 0;background:linear-gradient(135deg,#201a0c,#121212);border:1px solid #3d331d;border-radius:16px;padding:13px;display:flex;align-items:center;justify-content:space-between;gap:10px}.toggle button{border:0;border-radius:999px;padding:9px 13px;font-weight:900}.openBtn{background:var(--green);color:#07140c}.closedBtn{background:#262626;color:#b7b1a4}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px}.card h3{margin:0 0 6px;font-size:15px}.big{grid-column:1/-1}.muted{color:var(--muted)}
+.ai{background:radial-gradient(circle at top right,#4a3510,#17130b 45%,#151515 75%);border:1px solid #5c4920}.ai button,.goldbtn{width:100%;padding:12px;border:0;border-radius:12px;background:linear-gradient(135deg,var(--gold2),#ad7614);font-weight:900;color:#111;margin-top:8px}
+.order{border-top:1px solid #2b2b2b;padding-top:10px;margin-top:10px}.order:first-of-type{border-top:0;padding-top:0}.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.actions button{padding:11px;border-radius:11px;border:1px solid #4a3d21;background:#17120a;color:var(--gold2);font-weight:900}.actions .urgent{background:linear-gradient(135deg,#ffdd80,#c28a24);color:#161006;border:0}.danger{color:var(--red)}
+input,select{width:100%;background:#0d0d0d;border:1px solid #353535;border-radius:11px;color:#fff;padding:11px;font-size:16px}.smartMenu{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}.smartMenu button{padding:12px;border-radius:12px;border:1px solid #4f4329;background:#17130c;color:#f4d27a;font-weight:800}
+.preview{margin-top:10px;border:1px dashed #4c4c4c;border-radius:12px;padding:10px;display:none}.preview img{width:100%;max-height:180px;object-fit:cover;border-radius:9px}.preview.show{display:block}.tiny{font-size:11px}
+</style>
+</head>
+<body>
+<main class="app">
+<div class="brand"><div class="bf"><b>BUDE</b>FOOD MERCHANT</div><div class="powered"><span>Powered by WhyDrive</span><span class="wmark">W</span></div></div>
+<div class="status"><div><b id="merchantName">Your business</b><div class="muted tiny">One-page merchant control centre</div></div><div class="toggle"><button id="openToggle" class="openBtn">OPEN</button></div></div>
+
+<div class="grid">
+<section class="card big">
+<div style="display:flex;justify-content:space-between;align-items:center"><div><h3>Live Orders</h3><span class="muted tiny">Accept, update preparation time and call a driver early.</span></div><b style="color:var(--gold2)">1</b></div>
+<div class="order">
+<b>#BF-1024 • £18.40</b><div class="muted">2 × Breakfast Bap • 1 × Coffee</div><div class="muted tiny">Customer: EX23 delivery • received just now</div>
+<div class="actions"><button>Accept • 15 min</button><button>Accept • 25 min</button><button id="readyNow" class="urgent">READY NOW</button><button id="driverNow" class="urgent">CALL DRIVER NOW</button></div>
+<div id="driverStatus" class="muted tiny" style="margin-top:8px">No driver requested yet.</div>
+</div>
+</section>
+
+<section class="card ai big">
+<h3>✨ Smart AI</h3><div class="muted">Photograph a menu, specials board, shelf or single product. AI prepares changes for review before anything is published.</div>
+<div class="smartMenu"><button data-mode="Menu">Scan Menu</button><button data-mode="Specials">Scan Specials</button><button data-mode="Shelf">Scan Shelf / Stock</button><button data-mode="Product">Add Product</button></div>
+<input id="cameraInput" type="file" accept="image/*" capture="environment" style="margin-top:9px">
+<div id="preview" class="preview"><img id="previewImg" alt="Selected image"><div id="scanResult" style="margin-top:8px"></div><button id="analyse" class="goldbtn">Analyse image</button></div>
+</section>
+
+<section class="card"><h3>Today's Specials</h3><div class="muted tiny">Publish or pause specials instantly.</div><button class="goldbtn">Manage specials</button></section>
+<section class="card"><h3>Menu / Inventory</h3><div class="muted tiny">Items • prices • sold out • stock</div><button class="goldbtn">Open inventory</button></section>
+<section class="card"><h3>Opening Hours</h3><div class="muted tiny">Open now • opening later • closed today</div><select><option>Open now</option><option>Busy</option><option>Closed</option></select></section>
+<section class="card"><h3>Payments</h3><div class="muted tiny">Stripe Connect</div><div style="margin-top:8px"><b>Not connected</b></div><button class="goldbtn">Connect Stripe</button></section>
+<section class="card big"><h3>Today</h3><div class="grid"><div><b style="font-size:22px">£0.00</b><div class="muted tiny">Sales</div></div><div><b style="font-size:22px">0</b><div class="muted tiny">Completed orders</div></div></div></section>
+</div>
+</main>
+<script>
+let open=true,mode='Menu';
+const toggle=document.getElementById('openToggle');
+toggle.addEventListener('click',()=>{open=!open;toggle.textContent=open?'OPEN':'CLOSED';toggle.className=open?'openBtn':'closedBtn'});
+document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;document.getElementById('scanResult').innerHTML='<b>'+mode+' scan selected.</b><div class="muted tiny">Take or choose a photo below.</div>'}));
+const input=document.getElementById('cameraInput'),preview=document.getElementById('preview'),img=document.getElementById('previewImg');
+input.addEventListener('change',()=>{const f=input.files&&input.files[0];if(!f)return;img.src=URL.createObjectURL(f);preview.classList.add('show');document.getElementById('scanResult').innerHTML='<b>'+mode+' image ready.</b><div class="muted tiny">Nothing will publish until you approve it.</div>'});
+document.getElementById('analyse').addEventListener('click',()=>{document.getElementById('scanResult').innerHTML='<b>AI review step ready for backend connection.</b><div class="muted tiny">Planned output: detected items, names, prices, cropped product images and confidence checks.</div>'});
+document.getElementById('readyNow').addEventListener('click',()=>document.getElementById('driverStatus').textContent='Order marked READY NOW — WhyDrive dispatch should prioritise collection.');
+document.getElementById('driverNow').addEventListener('click',()=>document.getElementById('driverStatus').textContent='Driver requested now — awaiting WhyDrive assignment.');
+</script>
+</body></html>
