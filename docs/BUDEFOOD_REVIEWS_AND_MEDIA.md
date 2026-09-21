@@ -1,4 +1,4 @@
-# BudeToYou reviews and merchant media rules
+# Food2Bude reviews and merchant media rules
 
 ## Merchant photos
 - Do not auto-generate or auto-source food photos.
