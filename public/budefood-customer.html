@@ -38,6 +38,12 @@
 <div class="storeBody"><div class="row"><div><b style="font-size:19px">Crooklets Beach Cafe</b><div class="muted">Beach café • breakfast • lunch • drinks</div></div><div class="open">OPEN</div></div>
 <div class="tags"><span class="tag">Local</span><span class="tag">Collection</span><span class="tag">WhyDrive delivery</span></div>
 <div class="cta"><button class="btn">View menu</button><button class="btn primary" id="orderCrooklets">Order</button></div></div></article>
+<article class="store" data-name="mermaid fish chips" style="margin-top:10px">
+<div class="photo" style="background:linear-gradient(135deg,#4f6f86,#d6b567 45%,#305667)">The Mermaid</div>
+<div class="storeBody"><div class="row"><div><b style="font-size:19px">The Mermaid</b><div class="muted">Fish & chips • takeaway</div></div><div class="open">OPEN</div></div>
+<div class="tags"><span class="tag">Fish & Chips</span><span class="tag">WhyDrive delivery</span></div>
+<div class="cta"><button class="btn">View menu</button><button class="btn primary" id="orderMermaid">Add cod & chips</button></div></div></article>
+<div class="orderBox" id="basketPreview" style="display:none"><b>Combined Food2Bude basket</b><div id="basketLines" class="muted" style="margin-top:8px"></div><div style="margin-top:10px"><button id="submitCombined" class="btn primary" style="width:100%">Send order requests</button></div><div class="muted" style="font-size:11px;margin-top:8px">One customer order. Each outlet confirms its part. Payment is only attempted once every outlet has accepted. One WhyDrive driver then receives the combined collection route.</div></div>
 <div class="sectionTitle"><h2>Opening later</h2></div>
 <div class="later"><div class="laterItem"><span>Example evening venue</span><b>Opens 4:00pm</b></div><div class="laterItem"><span>Example takeaway</span><b>Opens 5:00pm</b></div><div class="laterItem"><span>Example bakery</span><b>Opens tomorrow</b></div></div>
 </section>
@@ -58,6 +64,11 @@
 const panels=[...document.querySelectorAll('.panel')],navs=[...document.querySelectorAll('.nav')];
 navs.forEach(n=>n.addEventListener('click',()=>{navs.forEach(x=>x.classList.remove('active'));n.classList.add('active');panels.forEach(p=>p.classList.toggle('active',p.id===n.dataset.panel));}));
 document.getElementById('check').addEventListener('click',()=>{const v=document.getElementById('postcode').value.trim();document.getElementById('delivery').textContent=v?'Delivery charge will be calculated from your exact address before checkout.':'Enter an address first.'});
-document.getElementById('orderCrooklets').addEventListener('click',()=>{document.getElementById('orderState').innerHTML='<b>Crooklets Beach Cafe</b><p class="muted">Demo order created • waiting for merchant acceptance</p>';navs[2].click()});
+const basket=[];
+function renderBasket(){const box=document.getElementById('basketPreview');box.style.display=basket.length?'block':'none';document.getElementById('basketLines').innerHTML=basket.map(x=>'• '+x.item+' — <b>'+x.merchant+'</b>').join('<br>');}
+document.getElementById('orderCrooklets').textContent='Add dirty fries';
+document.getElementById('orderCrooklets').addEventListener('click',()=>{basket.push({merchant:'Crooklets Beach Cafe',item:'Dirty Fries'});renderBasket();});
+document.getElementById('orderMermaid').addEventListener('click',()=>{basket.push({merchant:'The Mermaid',item:'Cod & Chips'});renderBasket();});
+document.getElementById('submitCombined').addEventListener('click',()=>{document.getElementById('orderState').innerHTML='<b>Combined order request sent</b><p class="muted">The Mermaid: awaiting acceptance<br>Crooklets Beach Cafe: awaiting acceptance</p><p><b>Payment status:</b> Not charged</p><p class="muted">Food2Bude will only attempt payment after every outlet accepts. If any outlet declines, the order is stopped or the customer can amend it before any charge is made.</p><p class="muted">Once accepted and paid, WhyDrive receives one multi-stop collection job so the same driver collects both parts and delivers them together.</p>';navs[2].click();});
 </script>
 </body></html>
