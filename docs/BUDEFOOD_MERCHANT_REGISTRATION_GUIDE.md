@@ -1,6 +1,6 @@
-# BudeFood Merchant Registration Guide
+# BudeToYou Merchant Registration Guide
 
-A simple step-by-step guide for food businesses joining BudeFood.
+A simple step-by-step guide for food businesses joining BudeToYou.
 
 ## Before you start
 Have these ready:
@@ -15,8 +15,8 @@ Have these ready:
 - Food photos only if you want to use your own
 - Stripe account details, or be ready to create a Stripe account during setup
 
-## Step 1 — Open the BudeFood Merchant app
-Open the BudeFood Merchant app on your Android phone, iPhone, tablet or computer.
+## Step 1 — Open the BudeToYou Merchant app
+Open the BudeToYou Merchant app on your Android phone, iPhone, tablet or computer.
 
 Tap:
 
@@ -61,7 +61,7 @@ Tap:
 **SAVE HOURS**
 
 ## Step 4 — Connect Stripe for payments
-BudeFood uses Stripe Connect so payments can be automatically allocated to your business.
+BudeToYou uses Stripe Connect so payments can be automatically allocated to your business.
 
 Tap:
 
@@ -69,21 +69,21 @@ Tap:
 
 If you already have a Stripe account:
 1. Sign in to Stripe.
-2. Approve the connection to BudeFood.
+2. Approve the connection to BudeToYou.
 3. Confirm the bank account you want payouts sent to.
 
 If you do not have a Stripe account:
 1. Tap **Create Stripe Account**.
 2. Enter the business and identity information requested by Stripe.
-3. Add the bank account where you want your BudeFood payouts sent.
+3. Add the bank account where you want your BudeToYou payouts sent.
 4. Complete Stripe's verification steps.
-5. Return to BudeFood.
+5. Return to BudeToYou.
 
 Once connected, the merchant app should show:
 
 **STRIPE CONNECTED**
 
-BudeFood will automatically calculate the agreed platform commission and allocate the remaining merchant amount to your connected Stripe account.
+BudeToYou will automatically calculate the agreed platform commission and allocate the remaining merchant amount to your connected Stripe account.
 
 ## Step 5 — Add your menu using Smart Menu
 This is designed to be the quickest part.
@@ -100,7 +100,7 @@ Take a clear photo of your menu.
 
 If your menu has more than one page, photograph each page.
 
-BudeFood will read the photographs and prepare:
+BudeToYou will read the photographs and prepare:
 - Menu sections
 - Item names
 - Descriptions
@@ -120,7 +120,7 @@ Example:
 Nothing is published automatically.
 
 ## Step 6 — Check the menu
-BudeFood shows the menu it has created.
+BudeToYou shows the menu it has created.
 
 Check:
 - Item names
@@ -139,12 +139,12 @@ Then:
 
 **PUBLISH**
 
-Your menu is now available in BudeFood.
+Your menu is now available in BudeToYou.
 
 ## Step 7 — Add your own food photos if you want
 Food photographs are optional.
 
-BudeFood does not automatically add stock or AI-generated food photographs.
+BudeToYou does not automatically add stock or AI-generated food photographs.
 
 If you want a picture next to a menu item:
 1. Open that menu item.
@@ -162,23 +162,23 @@ If you have a specials board, tap:
 
 Take a photograph of the specials board.
 
-BudeFood prepares the specials and prices for you.
+BudeToYou prepares the specials and prices for you.
 
 Check them and tap:
 
 **APPROVE & PUBLISH**
 
-The specials appear near the top of your BudeFood storefront.
+The specials appear near the top of your BudeToYou storefront.
 
 You can remove them again with one tap.
 
 ## Step 9 — Choose collection and delivery
 Choose whether you offer:
 - Collection
-- BudeFood / WhyDrive delivery
+- BudeToYou / WhyDrive delivery
 - Both
 
-If using WhyDrive delivery, BudeFood handles the delivery request through the connected driver network.
+If using WhyDrive delivery, BudeToYou handles the delivery request through the connected driver network.
 
 ## Step 10 — Go live
 Check your storefront preview.
@@ -196,7 +196,7 @@ Tap:
 
 **GO LIVE**
 
-Your business can now receive BudeFood orders.
+Your business can now receive BudeToYou orders.
 
 ---
 
@@ -253,17 +253,17 @@ Merchants can reply publicly to reviews from the Merchant app.
 
 # The simple version
 
-To join BudeFood:
+To join BudeToYou:
 
 1. Register the business.
 2. Connect Stripe.
 3. Set opening hours.
 4. Photograph the menu.
-5. Check what BudeFood has created.
+5. Check what BudeToYou has created.
 6. Approve it.
 7. Add your own photos if wanted.
 8. Choose collection / delivery.
 9. Go live.
 10. Accept orders as they arrive.
 
-The aim is that a normal food outlet should be able to get from registration to a working BudeFood storefront without manually typing its whole menu.
+The aim is that a normal food outlet should be able to get from registration to a working BudeToYou storefront without manually typing its whole menu.
