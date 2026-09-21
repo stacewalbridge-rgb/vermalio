@@ -32,10 +32,12 @@ input,select{width:100%;background:#0d0d0d;border:1px solid #353535;border-radiu
 </section>
 
 <section class="card ai big">
-<h3>✨ Smart AI</h3><div class="muted">Photograph a menu, specials board, shelf or single product. AI prepares changes for review before anything is published.</div>
-<div class="smartMenu"><button data-mode="Menu">Scan Menu</button><button data-mode="Specials">Scan Specials</button><button data-mode="Shelf">Scan Shelf / Stock</button><button data-mode="Product">Add Product</button></div>
+<h3>✨ Smart AI</h3><div class="muted">Photograph your menu or tell Food2Bude what you want to add. AI creates a draft for you to check before anything is published.</div>
+<div class="smartMenu"><button data-mode="Menu">📷 Scan Menu</button><button data-mode="Specials">📷 Scan Specials</button><button id="voiceMenu">🎙 Tell Smart AI</button><button data-mode="Product">➕ Add Product</button></div>
+<div id="voiceBox" class="preview"><b>Voice menu assistant</b><div class="muted tiny" style="margin:6px 0">Say things like: “Add cod and chips at £12.95, mushy peas £1.50, and curry sauce £1.50.”</div><button id="startVoice" class="goldbtn">Start listening</button><div id="voiceText" style="margin-top:8px"></div></div>
 <input id="cameraInput" type="file" accept="image/*" capture="environment" style="margin-top:9px">
 <div id="preview" class="preview"><img id="previewImg" alt="Selected image"><div id="scanResult" style="margin-top:8px"></div><button id="analyse" class="goldbtn">Analyse image</button></div>
+<div id="draftReview" class="preview"><b>Draft menu changes</b><div class="muted tiny" style="margin:6px 0">Check names and prices. Nothing goes live until you approve.</div><div id="draftItems"></div><button id="approveDraft" class="goldbtn">Approve & publish</button></div>
 </section>
 
 <section class="card"><h3>Today's Specials</h3><div class="muted tiny">Publish or pause specials instantly.</div><button class="goldbtn">Manage specials</button></section>
@@ -52,7 +54,19 @@ toggle.addEventListener('click',()=>{open=!open;toggle.textContent=open?'OPEN':'
 document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;document.getElementById('scanResult').innerHTML='<b>'+mode+' scan selected.</b><div class="muted tiny">Take or choose a photo below.</div>'}));
 const input=document.getElementById('cameraInput'),preview=document.getElementById('preview'),img=document.getElementById('previewImg');
 input.addEventListener('change',()=>{const f=input.files&&input.files[0];if(!f)return;img.src=URL.createObjectURL(f);preview.classList.add('show');document.getElementById('scanResult').innerHTML='<b>'+mode+' image ready.</b><div class="muted tiny">Nothing will publish until you approve it.</div>'});
-document.getElementById('analyse').addEventListener('click',()=>{document.getElementById('scanResult').innerHTML='<b>AI review step ready for backend connection.</b><div class="muted tiny">Planned output: detected items, names, prices, cropped product images and confidence checks.</div>'});
+document.getElementById('analyse').addEventListener('click',()=>{document.getElementById('scanResult').innerHTML='<b>Menu photo received.</b><div class="muted tiny">The live AI service will extract sections, item names, descriptions and prices, then open the approval screen.</div>';showDraft(['Cod & Chips — £12.95','Mushy Peas — £1.50','Curry Sauce — £1.50']);});
+function showDraft(items){const box=document.getElementById('draftReview');box.classList.add('show');document.getElementById('draftItems').innerHTML=items.map(x=>'<div style="padding:8px 0;border-top:1px solid #333">✓ '+x+' <span class="muted tiny">Edit</span></div>').join('');}
+document.getElementById('voiceMenu').addEventListener('click',()=>document.getElementById('voiceBox').classList.toggle('show'));
+document.getElementById('startVoice').addEventListener('click',()=>{
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!SR){document.getElementById('voiceText').innerHTML='<span class="danger">Voice input is not supported in this browser yet. You can type or scan instead.</span>';return;}
+ const r=new SR();r.lang='en-GB';r.interimResults=false;r.maxAlternatives=1;
+ document.getElementById('voiceText').textContent='Listening…';
+ r.onresult=e=>{const t=e.results[0][0].transcript;document.getElementById('voiceText').innerHTML='<b>Heard:</b> '+t+'<div class="muted tiny">Smart AI will turn this into editable menu items.</div>';showDraft([t]);};
+ r.onerror=()=>document.getElementById('voiceText').textContent='Could not hear that. Try again or use the menu scanner.';
+ r.start();
+});
+document.getElementById('approveDraft').addEventListener('click',()=>{document.getElementById('draftReview').innerHTML='<b style="color:var(--green)">Approved.</b><div class="muted tiny">These changes are ready to publish to the Food2Bude menu.</div>';});
 document.getElementById('readyNow').addEventListener('click',()=>document.getElementById('driverStatus').textContent='Order marked READY NOW — WhyDrive dispatch should prioritise collection.');
 document.getElementById('driverNow').addEventListener('click',()=>document.getElementById('driverStatus').textContent='Driver requested now — awaiting WhyDrive assignment.');
 </script>
