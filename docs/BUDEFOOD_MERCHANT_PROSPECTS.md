@@ -1,8 +1,8 @@
-# BudeToYou merchant prospect list
+# Food2Bude merchant prospect list
 
 Working list for outreach. **Scope is now strictly Bude town centre and Stratton town centre only.** Do not include Widemouth Bay, Kilkhampton, Marhamchurch, Crackington Haven, Launcells, Northcott, Tamar Lakes or other surrounding villages/areas at this stage.
 
-Inclusion means a business could be a relevant BudeToYou prospect; it does **not** mean the business has agreed to join.
+Inclusion means a business could be a relevant Food2Bude prospect; it does **not** mean the business has agreed to join.
 
 ## Bude town centre / central Bude prospects
 - Rosie's Kitchen
@@ -59,7 +59,7 @@ Inclusion means a business could be a relevant BudeToYou prospect; it does **not
 - Smart AI shelf/product scan with merchant approval before publishing
 
 ## Scope rule
-For the first BudeToYou launch and merchant outreach, only businesses physically located in Bude town centre or Stratton town centre should be listed or approached.
+For the first Food2Bude launch and merchant outreach, only businesses physically located in Bude town centre or Stratton town centre should be listed or approached.
 
 
 ## Phase 1 launch focus — FOOD FIRST
@@ -76,10 +76,10 @@ Prioritise Bude and Stratton town-centre food businesses first:
 - Restaurants
 - Dessert / ice cream businesses
 
-The first BudeToYou customer launch should focus on prepared food and meals so the ordering, payments, delivery and WhyDrive dispatch workflow can be proved before expanding the catalogue.
+The first Food2Bude customer launch should focus on prepared food and meals so the ordering, payments, delivery and WhyDrive dispatch workflow can be proved before expanding the catalogue.
 
 ## Phase 2 — LOCAL SHOPS
-Once the food workflow is operating well, expand BudeToYou to independent local shops in Bude and Stratton town centres.
+Once the food workflow is operating well, expand Food2Bude to independent local shops in Bude and Stratton town centres.
 
 Initial examples:
 - Lansdown Dairy
