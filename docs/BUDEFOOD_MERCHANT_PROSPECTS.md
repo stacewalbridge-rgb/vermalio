@@ -60,3 +60,32 @@ Inclusion means a business could be a relevant BudeFood prospect; it does **not*
 
 ## Scope rule
 For the first BudeFood launch and merchant outreach, only businesses physically located in Bude town centre or Stratton town centre should be listed or approached.
+
+
+## Phase 1 launch focus — FOOD FIRST
+Prioritise Bude and Stratton town-centre food businesses first:
+- Indian takeaways
+- Chinese takeaways
+- Thai takeaways
+- Pizza businesses including KJ's and Pizza Plus
+- Fish & chip shops
+- Kebab / burger / chicken takeaways
+- Cafés and coffee shops
+- Bakeries / pasty shops
+- Pubs serving food
+- Restaurants
+- Dessert / ice cream businesses
+
+The first BudeFood customer launch should focus on prepared food and meals so the ordering, payments, delivery and WhyDrive dispatch workflow can be proved before expanding the catalogue.
+
+## Phase 2 — LOCAL SHOPS
+Once the food workflow is operating well, expand BudeFood to independent local shops in Bude and Stratton town centres.
+
+Initial examples:
+- Lansdown Dairy
+- Stratton Stores
+- Other independent convenience / grocery shops
+- Delis
+- Specialist food shops
+
+For local shops, Smart AI shelf/product scanning should support photographing shelves, detecting products and prices, preparing individual inventory items, and requiring merchant approval before publishing.
