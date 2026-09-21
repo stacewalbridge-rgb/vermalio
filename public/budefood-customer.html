@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>BudeFood Customer MVP</title>
+<style>
+:root{--bg:#090909;--card:#151515;--card2:#1d1d1d;--gold:#d8ad4f;--gold2:#f1d07d;--text:#f7f3e8;--muted:#a9a394;--line:#2b2b2b;--green:#2cb67d}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(#0b0b0b,#060606);color:var(--text);font-family:Inter,Arial,sans-serif}
+.app{max-width:480px;margin:auto;min-height:100vh;padding:14px 14px 88px}
+.brand{display:flex;align-items:center;justify-content:space-between;gap:10px}.bf{font-size:29px;font-weight:900;letter-spacing:-1px}.bf b{color:var(--gold)}
+.powered{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px}.wmark{width:24px;height:24px;border:1px solid var(--gold);border-radius:50%;display:grid;place-items:center;color:var(--gold);font-weight:900}
+.hero{margin:14px 0;background:radial-gradient(circle at top right,#3b2e13 0,#17130b 35%,#131313 65%);border:1px solid #3a3120;border-radius:20px;padding:16px}
+.hero h1{font-size:25px;margin:0 0 8px}.hero p{margin:0;color:var(--muted)}
+.address{display:flex;gap:8px;margin-top:14px}.address input{flex:1;background:#0d0d0d;border:1px solid #3b3426;color:white;border-radius:12px;padding:13px;font-size:16px}.address button{background:linear-gradient(135deg,var(--gold2),#b98018);border:0;border-radius:12px;padding:0 14px;font-weight:900;color:#111}
+.search{margin:12px 0}.search input{width:100%;background:#111;border:1px solid var(--line);border-radius:14px;padding:13px;color:#fff;font-size:16px}
+.sectionTitle{display:flex;justify-content:space-between;align-items:center;margin:18px 2px 10px}.sectionTitle h2{font-size:18px;margin:0}.pill{font-size:11px;padding:6px 9px;border:1px solid #3d3d3d;border-radius:999px;color:var(--muted)}
+.store{border:1px solid #34302a;background:linear-gradient(180deg,#1a1813,#121212);border-radius:18px;overflow:hidden}
+.photo{height:170px;background:linear-gradient(135deg,#806b3b,#c4a969 40%,#47584a);display:flex;align-items:end;padding:14px;font-weight:900;font-size:25px;text-shadow:0 2px 6px #000}
+.storeBody{padding:14px}.row{display:flex;justify-content:space-between;gap:10px;align-items:center}.open{color:#75d99f;font-weight:800}.muted{color:var(--muted)}.tags{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.tag{font-size:11px;padding:5px 8px;border-radius:999px;background:#222;color:#d8d3c7}
+.cta{display:flex;gap:8px}.btn{flex:1;padding:12px;border-radius:12px;border:1px solid #5a4a26;background:#17130a;color:var(--gold2);font-weight:900}.btn.primary{background:linear-gradient(135deg,var(--gold2),#b27b16);color:#111;border:0}
+.later{display:grid;gap:8px}.laterItem{background:#111;border:1px solid #2a2a2a;border-radius:13px;padding:11px;display:flex;justify-content:space-between}
+.bottom{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(480px,100%);background:#0d0d0df2;border-top:1px solid #2d2d2d;display:grid;grid-template-columns:repeat(5,1fr);padding:7px 5px calc(7px + env(safe-area-inset-bottom))}
+.nav{background:none;border:0;color:#8f8a7e;font-size:11px;padding:7px 2px}.nav strong{display:block;font-size:19px;line-height:18px}.nav.active{color:var(--gold2)}
+.panel{display:none}.panel.active{display:block}.orderBox{background:#141414;border:1px solid #333;border-radius:16px;padding:14px;margin-top:12px}
+</style>
+</head>
+<body>
+<main class="app">
+<div class="brand"><div class="bf"><b>BUDE</b>FOOD <span style="color:var(--gold)">🍴</span></div><div class="powered"><span>Powered by WhyDrive</span><span class="wmark">W</span></div></div>
+
+<section id="home" class="panel active">
+<div class="hero"><h1>Bude's food. One app. To your door.</h1><p>Order locally, delivered by the WhyDrive network.</p><div class="address"><input id="postcode" placeholder="Enter postcode or address"><button id="check">Check</button></div><div id="delivery" class="muted" style="margin-top:8px">Enter your address to see delivery availability and charge.</div></div>
+<div class="search"><input id="homeSearch" placeholder="Search food, cafés or shops"></div>
+<div class="sectionTitle"><h2>Open now in Bude</h2><span class="pill">£10 minimum delivery</span></div>
+<article class="store" data-name="crooklets beach cafe">
+<div class="photo">Crooklets Beach Cafe</div>
+<div class="storeBody"><div class="row"><div><b style="font-size:19px">Crooklets Beach Cafe</b><div class="muted">Beach café • breakfast • lunch • drinks</div></div><div class="open">OPEN</div></div>
+<div class="tags"><span class="tag">Local</span><span class="tag">Collection</span><span class="tag">WhyDrive delivery</span></div>
+<div class="cta"><button class="btn">View menu</button><button class="btn primary" id="orderCrooklets">Order</button></div></div></article>
+<div class="sectionTitle"><h2>Opening later</h2></div>
+<div class="later"><div class="laterItem"><span>Example evening venue</span><b>Opens 4:00pm</b></div><div class="laterItem"><span>Example takeaway</span><b>Opens 5:00pm</b></div><div class="laterItem"><span>Example bakery</span><b>Opens tomorrow</b></div></div>
+</section>
+
+<section id="search" class="panel"><div class="sectionTitle"><h2>Search</h2></div><div class="search"><input placeholder="Search BudeFood"></div><div class="orderBox muted">As merchants join, food, cafés, bakeries, takeaways, pubs and local shops will appear here.</div></section>
+<section id="orders" class="panel"><div class="sectionTitle"><h2>My Orders</h2></div><div id="orderState" class="orderBox"><b>No live order yet.</b><p class="muted">Your active delivery, driver status and past orders will appear here.</p></div></section>
+<section id="favourites" class="panel"><div class="sectionTitle"><h2>Favourites</h2></div><div class="orderBox"><b>Crooklets Beach Cafe</b><p class="muted">Favourite merchants will be kept here for fast reordering.</p></div></section>
+<section id="account" class="panel"><div class="sectionTitle"><h2>Account</h2></div><div class="orderBox"><b>My Info</b><p class="muted">Saved addresses • payment methods • dietary preferences • notifications • help</p></div></section>
+</main>
+<nav class="bottom" aria-label="Main navigation">
+<button class="nav active" data-panel="home"><strong>⌂</strong>Home</button>
+<button class="nav" data-panel="search"><strong>⌕</strong>Search</button>
+<button class="nav" data-panel="orders"><strong>▤</strong>Orders</button>
+<button class="nav" data-panel="favourites"><strong>☆</strong>Favourites</button>
+<button class="nav" data-panel="account"><strong>○</strong>Account</button>
+</nav>
+<script>
+const panels=[...document.querySelectorAll('.panel')],navs=[...document.querySelectorAll('.nav')];
+navs.forEach(n=>n.addEventListener('click',()=>{navs.forEach(x=>x.classList.remove('active'));n.classList.add('active');panels.forEach(p=>p.classList.toggle('active',p.id===n.dataset.panel));}));
+document.getElementById('check').addEventListener('click',()=>{const v=document.getElementById('postcode').value.trim();document.getElementById('delivery').textContent=v?'Delivery charge will be calculated from your exact address before checkout.':'Enter an address first.'});
+document.getElementById('orderCrooklets').addEventListener('click',()=>{document.getElementById('orderState').innerHTML='<b>Crooklets Beach Cafe</b><p class="muted">Demo order created • waiting for merchant acceptance</p>';navs[2].click()});
+</script>
+</body></html>
