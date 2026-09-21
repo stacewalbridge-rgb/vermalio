@@ -1,9 +1,10 @@
 # BudeFood merchant prospect list
 
-Working list for outreach. Inclusion means a business could be a relevant BudeFood prospect; it does **not** mean the business has agreed to join.
+Working list for outreach. **Scope is now strictly Bude town centre and Stratton town centre only.** Do not include Widemouth Bay, Kilkhampton, Marhamchurch, Crackington Haven, Launcells, Northcott, Tamar Lakes or other surrounding villages/areas at this stage.
 
-## Priority Bude / immediate area
-- Crooklets Beach Cafe
+Inclusion means a business could be a relevant BudeFood prospect; it does **not** mean the business has agreed to join.
+
+## Bude town centre / central Bude prospects
 - Rosie's Kitchen
 - The Brendon Arms
 - Olive Tree
@@ -20,21 +21,16 @@ Working list for outreach. Inclusion means a business could be a relevant BudeFo
 - The Cornish Pie Company
 - The Bank
 - The Seagull
-- Sandymouth Cafe
 
-## Nearby / wider EX23 prospects
-- Marhamchurch Village Shop
-- Crackington Village Shop
-- Cornish Coasts
-- Little Pig, Kilkhampton
-- Tamar Lakes
-- Rectory Farm Tearooms
-- Sip and Sea, Northcott Mouth
-- Creative Cafe: Your Journey Continues, Launcells
-- Gerry's Originals Ice Cream & Snacks, Widemouth Bay
-- The Tree Inn, Stratton
+## Stratton town centre prospects
+- The Tree Inn
 
-## Categories to continue searching
+## Needs location check before inclusion
+- Crooklets Beach Cafe — exclude unless user later expands scope beyond Bude/Stratton town centre
+- Sandymouth Cafe — exclude
+- Any business outside Bude or Stratton town centre — exclude
+
+## Categories to continue searching — Bude + Stratton town centre only
 - Fish & chip shops
 - Chinese takeaways
 - Indian takeaways
@@ -45,10 +41,9 @@ Working list for outreach. Inclusion means a business could be a relevant BudeFo
 - Pubs serving food
 - Restaurants
 - Dessert / ice cream
-- Delis / farm shops
+- Delis
 - Convenience and grocery shops
-- National chains with a Bude branch
-- Seasonal beach kiosks / food vans
+- National chains with a Bude or Stratton town-centre branch
 
 ## Merchant pitch
 - 10% commission target model
@@ -63,9 +58,5 @@ Working list for outreach. Inclusion means a business could be a relevant BudeFo
 - Smart AI specials-board scan
 - Smart AI shelf/product scan with merchant approval before publishing
 
-## Current source checks
-Visit Bude currently lists local food businesses including Crooklets Beach Cafe, Rosie's Kitchen, The Barge Bude, Buffy's, Electric Bakery, Lansdown Dairy, North Coast Wine Bar, Marhamchurch Village Shop, Crackington Village Shop, Cornish Coasts, Little Pig, Tamar Lakes, Rectory Farm Tearooms, Sip and Sea and Creative Cafe.
-
-Additional current local business results identified The Cornish Pie Company, The Bank, The Seagull, Sandymouth Cafe, Kick Start Cafe, Gerry's Originals and The Tree Inn.
-
-Further verification and contact details should be completed before outreach.
+## Scope rule
+For the first BudeFood launch and merchant outreach, only businesses physically located in Bude town centre or Stratton town centre should be listed or approached.
