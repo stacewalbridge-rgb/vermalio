@@ -2,17 +2,25 @@ package com.vamalio.judgeai;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.content.Intent;
-import android.net.Uri;
 import android.os.Bundle;
 import android.webkit.WebChromeClient;
-import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
-    private static final String JUDGE_URL = "https://vermalio.stace-walbridge.workers.dev/judge-ai/";
     private WebView web;
+
+    private String readAsset(String name) throws Exception {
+        BufferedReader br = new BufferedReader(new InputStreamReader(getAssets().open(name), StandardCharsets.UTF_8));
+        StringBuilder sb = new StringBuilder();
+        String line;
+        while ((line = br.readLine()) != null) sb.append(line).append("\n");
+        br.close();
+        return sb.toString();
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -24,21 +32,13 @@ public class MainActivity extends Activity {
         web.getSettings().setAllowFileAccess(false);
         web.getSettings().setAllowContentAccess(false);
         web.setWebChromeClient(new WebChromeClient());
-        web.setWebViewClient(new WebViewClient() {
-            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Uri u = request.getUrl();
-                String host = u.getHost() == null ? "" : u.getHost();
-                if ("https".equalsIgnoreCase(u.getScheme()) &&
-                    (host.endsWith("workers.dev") || host.endsWith("github.com") ||
-                     host.endsWith("google.com") || host.endsWith("accounts.google.com") ||
-                     host.endsWith("anthropic.com") || host.endsWith("openai.com"))) {
-                    return false;
-                }
-                startActivity(new Intent(Intent.ACTION_VIEW, u));
-                return true;
-            }
-        });
-        web.loadUrl(JUDGE_URL);
+        web.setWebViewClient(new WebViewClient());
+        try {
+            String html = readAsset("judge_ai.html");
+            web.loadDataWithBaseURL("https://vermalio.stace-walbridge.workers.dev/", html, "text/html", "UTF-8", null);
+        } catch (Exception e) {
+            web.loadData("<h2>Judge AI failed to load</h2><pre>"+e.getMessage()+"</pre>", "text/html", "UTF-8");
+        }
     }
 
     @Override public void onBackPressed() {
