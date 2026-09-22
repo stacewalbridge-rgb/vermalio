@@ -1,6 +1,7 @@
 package com.vamalio.judgeai;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -8,15 +9,15 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import androidx.appcompat.app.AppCompatActivity;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends Activity {
     private static final String JUDGE_URL = "https://vermalio.stace-walbridge.workers.dev/judge-ai/";
+    private WebView web;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        WebView web = new WebView(this);
+        web = new WebView(this);
         setContentView(web);
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true);
@@ -26,10 +27,11 @@ public class MainActivity extends AppCompatActivity {
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri u = request.getUrl();
+                String host = u.getHost() == null ? "" : u.getHost();
                 if ("https".equalsIgnoreCase(u.getScheme()) &&
-                    (u.getHost().endsWith("workers.dev") || u.getHost().endsWith("github.com") ||
-                     u.getHost().endsWith("google.com") || u.getHost().endsWith("accounts.google.com") ||
-                     u.getHost().endsWith("anthropic.com") || u.getHost().endsWith("openai.com"))) {
+                    (host.endsWith("workers.dev") || host.endsWith("github.com") ||
+                     host.endsWith("google.com") || host.endsWith("accounts.google.com") ||
+                     host.endsWith("anthropic.com") || host.endsWith("openai.com"))) {
                     return false;
                 }
                 startActivity(new Intent(Intent.ACTION_VIEW, u));
@@ -40,7 +42,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override public void onBackPressed() {
-        WebView web = (WebView)findViewById(android.R.id.content).getRootView().findViewById(android.R.id.content);
-        super.onBackPressed();
+        if (web != null && web.canGoBack()) web.goBack();
+        else super.onBackPressed();
     }
 }
