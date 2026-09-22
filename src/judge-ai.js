@@ -239,9 +239,8 @@ async function handleChat(request, env) {
 
 export async function handleJudgeAI(request, env, url) {
   const expected = cleanText(env.JUDGE_ACCESS_TOKEN);
-  if (!expected) return json({ok:false,error:"judge_ai_access_not_configured"},503);
   const auth = cleanText(request.headers.get("authorization"));
-  if (auth !== `Bearer ${expected}`) return json({ok:false,error:"unauthorized"},401);
+  const privileged = Boolean(expected && auth === `Bearer ${expected}`);
 
   if (request.method==="GET" && url.pathname==="/api/judge-ai/status") {
     return json({ok:true,name:"Judge AI",configured:configured(env),providers:PROVIDERS});
@@ -251,12 +250,14 @@ export async function handleJudgeAI(request, env, url) {
     catch (e) { return json({ok:false,error:cleanText(e?.message||e)},500); }
   }
   if (request.method==="POST" && url.pathname==="/api/judge-ai/tools/github") {
+    if (!privileged) return json({ok:false,error:"tool_authorization_required"},401);
     try {
       const args = await request.json().catch(()=>({}));
       return json({ok:true,result:await githubTool(env,args)});
     } catch (e) { return json({ok:false,error:cleanText(e?.message||e)},500); }
   }
   if (request.method==="POST" && url.pathname==="/api/judge-ai/tools/firebase") {
+    if (!privileged) return json({ok:false,error:"tool_authorization_required"},401);
     try {
       const args = await request.json().catch(()=>({}));
       return json({ok:true,result:await firebaseTool(env,args)});
