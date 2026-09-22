@@ -1,0 +1,25 @@
+name: Judge AI checks
+
+on:
+  push:
+    branches: [judge-ai]
+  pull_request:
+    paths:
+      - "src/judge-ai.js"
+      - "src/worker.js"
+      - "public/judge-ai/**"
+      - ".github/workflows/judge-ai-checks.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --check src/judge-ai.js
+      - run: node --check src/worker.js
+      - run: |
+          test -f public/judge-ai/index.html
+          grep -q "Judge AI" public/judge-ai/index.html
