@@ -20,6 +20,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.10.2"
+      - name: Prepare stable test signing key
+        run: base64 -d test-signing/judgeai-test.keystore.b64 > judgeai-test.keystore
+        working-directory: android-judge
       - run: gradle :app:assembleDebug
         working-directory: android-judge
       - uses: actions/upload-artifact@v4
