@@ -1,6 +1,7 @@
 import worker, { BtoOrderStore as LegacyBtoOrderStore } from "./index.js";
 import { DurableObject } from "cloudflare:workers";
 import { handleBtoProdigiSpreadBridge } from "./bto-prodigi-spread-bridge.js";
+import { handleJudgeAI } from "./judge-ai.js";
 
 const BTO_PUBLIC_BASE = "https://builttooffend.com";
 const BTO_PRODIGI_ORDER_URL = "https://vermalio.stace-walbridge.workers.dev/api/internal/bto/prodigi/order";
@@ -216,6 +217,10 @@ export default {
 
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    if (url.pathname.startsWith("/api/judge-ai/")) {
+      return handleJudgeAI(request, env, url);
+    }
 
     if (url.pathname.startsWith("/api/internal/bto/prodigi/")) {
       return handleBtoProdigiSpreadBridge(request, env, url);
