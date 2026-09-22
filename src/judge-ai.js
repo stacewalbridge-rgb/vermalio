@@ -81,7 +81,7 @@ async function callOpenRouterKey(key, model, system, prompt) {
       "http-referer":"https://vermalio.stace-walbridge.workers.dev/",
       "x-title":"Judge AI"
     },
-    body:JSON.stringify({model,messages:[{role:"system",content:system},{role:"user",content:prompt}]})
+    body:JSON.stringify({model,max_tokens:1800,temperature:0.2,messages:[{role:"system",content:system},{role:"user",content:prompt}]})
   });
   const body = await r.json().catch(()=>({}));
   if (!r.ok) throw new Error(`OpenRouter ${r.status}: ${body?.error?.message || "request failed"}`);
@@ -90,9 +90,9 @@ async function callOpenRouterKey(key, model, system, prompt) {
 
 async function runOpenRouterPanel(key, message) {
   const team = [
-    {provider:"OpenAI", model:"~openai/gpt-sol-latest", role:"primary investigator"},
-    {provider:"Claude", model:"~anthropic/claude-sonnet-latest", role:"adversarial reviewer"},
-    {provider:"Gemini", model:"~google/gemini-flash-latest", role:"implementation and test reviewer"}
+    {provider:"Free Agent 1", model:"openrouter/free", role:"primary investigator"},
+    {provider:"Free Agent 2", model:"openrouter/free", role:"adversarial reviewer"},
+    {provider:"Free Agent 3", model:"openrouter/free", role:"implementation and test reviewer"}
   ];
   const reports = await Promise.all(team.map(async item => {
     try {
@@ -108,18 +108,18 @@ async function runOpenRouterPanel(key, message) {
     }
   }));
   if (!reports.some(r=>r.ok)) {
-    throw new Error(reports.map(r=>r.error).filter(Boolean).join(" | ") || "OpenRouter team failed");
+    throw new Error(reports.map(r=>r.error).filter(Boolean).join(" | ") || "Free AI team failed");
   }
   const digest = reports.map(r=>r.ok?`[${r.provider}]\n${r.text}`:`[${r.provider} FAILED] ${r.error}`).join("\n\n");
   const finalText = await callOpenRouterKey(
     key,
-    "~openai/gpt-sol-latest",
+    "openrouter/free",
     "You are Judge AI, the final supervising judge. Reconcile evidence, do not average blindly, and require tests before declaring software repairs successful.",
     `Original task:\n${message}\n\nSpecialist reports:\n${digest}\n\nProduce one reconciled answer with concrete next actions and unresolved faults.`
   );
   return {
     ok:true,
-    judge:{provider:"OpenAI via OpenRouter",text:finalText},
+    judge:{provider:"Judge AI · Free models",text:finalText},
     reports,
     challenges:[],
     configured:configured({}, key)
