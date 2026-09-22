@@ -2,7 +2,7 @@ name: Judge AI Android APK
 
 on:
   push:
-    branches: [judge-ai]
+    branches: [main, judge-ai]
     paths:
       - "android-judge/**"
       - ".github/workflows/judge-ai-android.yml"
