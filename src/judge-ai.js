@@ -11,12 +11,13 @@ function cleanText(value) {
   return String(value ?? "").trim();
 }
 
-function configured(env) {
+function configured(env, userOpenRouterKey = "") {
+  const routed = Boolean(userOpenRouterKey);
   return {
-    openai: Boolean(env.OPENAI_API_KEY && env.JUDGE_OPENAI_MODEL),
-    anthropic: Boolean(env.ANTHROPIC_API_KEY && env.JUDGE_ANTHROPIC_MODEL),
-    gemini: Boolean(env.GEMINI_API_KEY && env.JUDGE_GEMINI_MODEL),
-    openrouter: Boolean(env.OPENROUTER_API_KEY && env.JUDGE_OPENROUTER_MODEL),
+    openai: routed || Boolean(env.OPENAI_API_KEY && env.JUDGE_OPENAI_MODEL),
+    anthropic: routed || Boolean(env.ANTHROPIC_API_KEY && env.JUDGE_ANTHROPIC_MODEL),
+    gemini: routed || Boolean(env.GEMINI_API_KEY && env.JUDGE_GEMINI_MODEL),
+    openrouter: routed || Boolean(env.OPENROUTER_API_KEY && env.JUDGE_OPENROUTER_MODEL),
     github: Boolean(env.JUDGE_GITHUB_TOKEN),
     firebase: Boolean(env.JUDGE_FIREBASE_PROJECT_ID && (env.JUDGE_FIREBASE_API_KEY || env.JUDGE_FIREBASE_SERVICE_TOKEN))
   };
@@ -69,6 +70,60 @@ async function callOpenRouter(env, system, prompt) {
   const body = await r.json().catch(()=>({}));
   if (!r.ok) throw new Error(`OpenRouter ${r.status}: ${body?.error?.message || "request failed"}`);
   return cleanText(body.choices?.[0]?.message?.content);
+}
+
+async function callOpenRouterKey(key, model, system, prompt) {
+  const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method:"POST",
+    headers:{
+      "authorization":`Bearer ${key}`,
+      "content-type":"application/json",
+      "http-referer":"https://vermalio.stace-walbridge.workers.dev/",
+      "x-title":"Judge AI"
+    },
+    body:JSON.stringify({model,messages:[{role:"system",content:system},{role:"user",content:prompt}]})
+  });
+  const body = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(`OpenRouter ${r.status}: ${body?.error?.message || "request failed"}`);
+  return cleanText(body.choices?.[0]?.message?.content);
+}
+
+async function runOpenRouterPanel(key, message) {
+  const team = [
+    {provider:"OpenAI", model:"~openai/gpt-sol-latest", role:"primary investigator"},
+    {provider:"Claude", model:"~anthropic/claude-sonnet-latest", role:"adversarial reviewer"},
+    {provider:"Gemini", model:"~google/gemini-flash-latest", role:"implementation and test reviewer"}
+  ];
+  const reports = await Promise.all(team.map(async item => {
+    try {
+      const text = await callOpenRouterKey(
+        key,
+        item.model,
+        "You are one specialist inside Judge AI. Be concise, technical and independent.",
+        teamPrompt(message,item.role)
+      );
+      return {provider:item.provider,model:item.model,ok:true,text};
+    } catch (e) {
+      return {provider:item.provider,model:item.model,ok:false,error:cleanText(e?.message||e)};
+    }
+  }));
+  if (!reports.some(r=>r.ok)) {
+    throw new Error(reports.map(r=>r.error).filter(Boolean).join(" | ") || "OpenRouter team failed");
+  }
+  const digest = reports.map(r=>r.ok?`[${r.provider}]\n${r.text}`:`[${r.provider} FAILED] ${r.error}`).join("\n\n");
+  const finalText = await callOpenRouterKey(
+    key,
+    "~openai/gpt-sol-latest",
+    "You are Judge AI, the final supervising judge. Reconcile evidence, do not average blindly, and require tests before declaring software repairs successful.",
+    `Original task:\n${message}\n\nSpecialist reports:\n${digest}\n\nProduce one reconciled answer with concrete next actions and unresolved faults.`
+  );
+  return {
+    ok:true,
+    judge:{provider:"OpenAI via OpenRouter",text:finalText},
+    reports,
+    challenges:[],
+    configured:configured({}, key)
+  };
 }
 
 async function callProvider(name, env, system, prompt) {
@@ -221,6 +276,8 @@ async function handleChat(request, env) {
   const body = await request.json().catch(()=>({}));
   const message = cleanText(body.message);
   if (!message) return json({ok:false,error:"message_required"},400);
+  const userOpenRouterKey = cleanText(request.headers.get("x-judge-openrouter-key"));
+  if (userOpenRouterKey) return json(await runOpenRouterPanel(userOpenRouterKey,message));
   const reports = await runTeam(env,message);
   const evidence = reports.map(r=>r.ok?`[${r.provider}] ${r.text}`:`[${r.provider} failed] ${r.error}`).join("\n\n");
   const ready = configured(env);
@@ -243,7 +300,41 @@ export async function handleJudgeAI(request, env, url) {
   const privileged = Boolean(expected && auth === `Bearer ${expected}`);
 
   if (request.method==="GET" && url.pathname==="/api/judge-ai/status") {
-    return json({ok:true,name:"Judge AI",configured:configured(env),providers:PROVIDERS});
+    const userOpenRouterKey = cleanText(request.headers.get("x-judge-openrouter-key"));
+    return json({ok:true,name:"Judge AI",configured:configured(env,userOpenRouterKey),providers:PROVIDERS});
+  }
+  if (request.method==="POST" && url.pathname==="/api/judge-ai/openrouter/exchange") {
+    try {
+      const args = await request.json().catch(()=>({}));
+      const code = cleanText(args.code);
+      const codeVerifier = cleanText(args.code_verifier);
+      if (!code || !codeVerifier) return json({ok:false,error:"oauth_code_or_verifier_missing"},400);
+      const r = await fetch("https://openrouter.ai/api/v1/auth/keys",{
+        method:"POST",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify({code,code_verifier:codeVerifier,code_challenge_method:"S256"})
+      });
+      const body = await r.json().catch(()=>({}));
+      if (!r.ok || !body.key) return json({ok:false,error:body?.error?.message||body?.message||`OpenRouter OAuth failed (${r.status})`},r.status||500);
+      return json({ok:true,key:body.key});
+    } catch(e) { return json({ok:false,error:cleanText(e?.message||e)},500); }
+  }
+  if (request.method==="GET" && url.pathname==="/api/judge-ai/openrouter/callback") {
+    const html = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:system-ui;padding:24px"><h2>Connecting Judge AI…</h2><p id="s">Finishing OpenRouter connection.</p><script>
+    (async()=>{try{
+      const code=new URL(location.href).searchParams.get("code");
+      const verifier=localStorage.getItem("judge_openrouter_verifier")||"";
+      if(!code||!verifier) throw new Error("Missing OAuth code");
+      const r=await fetch("/api/judge-ai/openrouter/exchange",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code,code_verifier:verifier})});
+      const j=await r.json();
+      if(!r.ok||!j.ok||!j.key) throw new Error(j.error||"Connection failed");
+      localStorage.setItem("judge_openrouter_key",j.key);
+      localStorage.removeItem("judge_openrouter_verifier");
+      document.getElementById("s").textContent="Connected. Returning to Judge AI…";
+      setTimeout(()=>history.go(-2),500);
+    }catch(e){document.getElementById("s").textContent="Connection failed: "+e.message;}})();
+    <\/script>`;
+    return new Response(html,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
   }
   if (request.method==="POST" && url.pathname==="/api/judge-ai/chat") {
     try { return await handleChat(request,env); }
