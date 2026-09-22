@@ -126,6 +126,46 @@ async function githubRequest(env, path, init={}) {
   return body;
 }
 
+
+function toBase64Utf8(text) {
+  const bytes = new TextEncoder().encode(String(text));
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+async function firebaseAccessToken(env) {
+  if (env.JUDGE_FIREBASE_SERVICE_TOKEN) return env.JUDGE_FIREBASE_SERVICE_TOKEN;
+  throw new Error("Firebase Admin token is not configured");
+}
+
+async function firebaseTool(env, args) {
+  const project = cleanText(env.JUDGE_FIREBASE_PROJECT_ID);
+  if (!project) throw new Error("Firebase project is not configured");
+  const token = await firebaseAccessToken(env);
+  const headers = {"authorization":`Bearer ${token}`,"content-type":"application/json"};
+
+  if (args.action==="firestore-get") {
+    const doc = cleanText(args.document).replace(/^\/+/, "");
+    if (!doc) throw new Error("Firebase document path required");
+    const endpoint = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(project)}/databases/(default)/documents/${doc.split("/").map(encodeURIComponent).join("/")}`;
+    const r = await fetch(endpoint,{headers});
+    const body = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(`Firebase ${r.status}: ${body?.error?.message||"request failed"}`);
+    return body;
+  }
+
+  if (args.action==="auth-users") {
+    const endpoint = `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(project)}/accounts:batchGet?maxResults=${Math.min(Number(args.maxResults)||20,100)}`;
+    const r = await fetch(endpoint,{headers});
+    const body = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(`Firebase Auth ${r.status}: ${body?.error?.message||"request failed"}`);
+    return body;
+  }
+
+  throw new Error("Unsupported Firebase tool action");
+}
+
 async function githubTool(env, args) {
   const repo = cleanText(args.repo);
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error("Invalid repo");
@@ -135,8 +175,44 @@ async function githubTool(env, args) {
     const ref = args.ref ? `?ref=${encodeURIComponent(args.ref)}` : "";
     return githubRequest(env,`/repos/${repo}/contents/${String(args.path||"").replace(/^\/+/, "")}${ref}`);
   }
+  if (args.action==="list") {
+    const ref = args.ref ? `?ref=${encodeURIComponent(args.ref)}` : "";
+    return githubRequest(env,`/repos/${repo}/contents/${String(args.path||"").replace(/^\\/+/, "")}${ref}`);
+  }
   if (args.action==="workflow-runs") {
-    return githubRequest(env,`/repos/${repo}/actions/runs?per_page=10`);
+    const branch = args.ref ? `&branch=${encodeURIComponent(args.ref)}` : "";
+    return githubRequest(env,`/repos/${repo}/actions/runs?per_page=10${branch}`);
+  }
+  if (args.action==="create-branch") {
+    const name = cleanText(args.branch);
+    if (!/^judge-ai\/[A-Za-z0-9._/-]+$/.test(name)) throw new Error("Judge AI repair branches must start judge-ai/");
+    const source = cleanText(args.sha);
+    if (!/^[a-f0-9]{40}$/i.test(source)) throw new Error("Source commit SHA required");
+    return githubRequest(env,`/repos/${repo}/git/refs`,{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({ref:`refs/heads/${name}`,sha:source})
+    });
+  }
+  if (args.action==="write") {
+    const path = String(args.path||"").replace(/^\\/+/, "");
+    const branch = cleanText(args.branch);
+    if (!/^judge-ai\/[A-Za-z0-9._/-]+$/.test(branch) && branch!=="judge-ai") throw new Error("Writes are restricted to Judge AI branches");
+    if (!path) throw new Error("Path required");
+    let sha = null;
+    try {
+      const current = await githubRequest(env,`/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`);
+      sha = current?.sha || null;
+    } catch (e) {
+      if (!String(e?.message||e).includes("GitHub 404")) throw e;
+    }
+    const payload = {message:cleanText(args.message)||"Judge AI automated repair",content:toBase64Utf8(args.content||""),branch};
+    if (sha) payload.sha = sha;
+    return githubRequest(env,`/repos/${repo}/contents/${path}`,{
+      method:"PUT",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify(payload)
+    });
   }
   throw new Error("Unsupported GitHub tool action");
 }
@@ -146,8 +222,19 @@ async function handleChat(request, env) {
   const message = cleanText(body.message);
   if (!message) return json({ok:false,error:"message_required"},400);
   const reports = await runTeam(env,message);
-  const final = await synthesize(env,message,reports);
-  return json({ok:true,judge:final,reports,configured:configured(env)});
+  const evidence = reports.map(r=>r.ok?`[${r.provider}] ${r.text}`:`[${r.provider} failed] ${r.error}`).join("\n\n");
+  const ready = configured(env);
+  const active = PROVIDERS.filter(p=>ready[p]);
+  const challenges = await Promise.all(active.map(async name=>{
+    try {
+      const text = await callProvider(name,env,
+        "You are a hostile reviewer inside Judge AI. Find mistakes the other models missed. Do not rubber-stamp.",
+        `Original task:\n${message}\n\nAll first-round findings:\n${evidence}\n\nChallenge these findings. Identify contradictions, missing tests, unsafe changes and remaining faults.`);
+      return {provider:name,ok:true,text};
+    } catch(e) { return {provider:name,ok:false,error:cleanText(e?.message||e)}; }
+  }));
+  const final = await synthesize(env,message,[...reports,...challenges]);
+  return json({ok:true,judge:final,reports,challenges,configured:configured(env)});
 }
 
 export async function handleJudgeAI(request, env, url) {
@@ -162,6 +249,12 @@ export async function handleJudgeAI(request, env, url) {
     try {
       const args = await request.json().catch(()=>({}));
       return json({ok:true,result:await githubTool(env,args)});
+    } catch (e) { return json({ok:false,error:cleanText(e?.message||e)},500); }
+  }
+  if (request.method==="POST" && url.pathname==="/api/judge-ai/tools/firebase") {
+    try {
+      const args = await request.json().catch(()=>({}));
+      return json({ok:true,result:await firebaseTool(env,args)});
     } catch (e) { return json({ok:false,error:cleanText(e?.message||e)},500); }
   }
   return json({ok:false,error:"judge_ai_route_not_found"},404);
