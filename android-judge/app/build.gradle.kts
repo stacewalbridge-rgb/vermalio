@@ -4,26 +4,11 @@ android {
     namespace = "com.vamalio.judgeai"
     compileSdk = 35
 
-    signingConfigs {
-        create("judgeTest") {
-            storeFile = file("../judgeai-test.keystore")
-            storePassword = "judgeaitest"
-            keyAlias = "judgeai-test"
-            keyPassword = "judgeaitest"
-        }
-    }
-
     defaultConfig {
-        applicationId = "com.vamalio.judgeai.test"
+        applicationId = "com.vamalio.judgeai.clean20260922a"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
-    }
-
-    buildTypes {
-        getByName("debug") {
-            signingConfig = signingConfigs.getByName("judgeTest")
-        }
+        versionCode = 3
+        versionName = "0.3.0"
     }
 }
