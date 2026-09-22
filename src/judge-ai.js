@@ -177,7 +177,7 @@ async function githubTool(env, args) {
   }
   if (args.action==="list") {
     const ref = args.ref ? `?ref=${encodeURIComponent(args.ref)}` : "";
-    return githubRequest(env,`/repos/${repo}/contents/${String(args.path||"").replace(/^\\/+/, "")}${ref}`);
+    return githubRequest(env,`/repos/${repo}/contents/${String(args.path||"").replace(/^\/+/, "")}${ref}`);
   }
   if (args.action==="workflow-runs") {
     const branch = args.ref ? `&branch=${encodeURIComponent(args.ref)}` : "";
@@ -195,7 +195,7 @@ async function githubTool(env, args) {
     });
   }
   if (args.action==="write") {
-    const path = String(args.path||"").replace(/^\\/+/, "");
+    const path = String(args.path||"").replace(/^\/+/, "");
     const branch = cleanText(args.branch);
     if (!/^judge-ai\/[A-Za-z0-9._/-]+$/.test(branch) && branch!=="judge-ai") throw new Error("Writes are restricted to Judge AI branches");
     if (!path) throw new Error("Path required");
@@ -238,6 +238,11 @@ async function handleChat(request, env) {
 }
 
 export async function handleJudgeAI(request, env, url) {
+  const expected = cleanText(env.JUDGE_ACCESS_TOKEN);
+  if (!expected) return json({ok:false,error:"judge_ai_access_not_configured"},503);
+  const auth = cleanText(request.headers.get("authorization"));
+  if (auth !== `Bearer ${expected}`) return json({ok:false,error:"unauthorized"},401);
+
   if (request.method==="GET" && url.pathname==="/api/judge-ai/status") {
     return json({ok:true,name:"Judge AI",configured:configured(env),providers:PROVIDERS});
   }
