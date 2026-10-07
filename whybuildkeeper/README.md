@@ -1,3 +1,3 @@
 # WhyDrive Build Keeper
 
-Android helper app for the user's own device.
+Single Android helper app for continuous WhyDrive build prompting.
