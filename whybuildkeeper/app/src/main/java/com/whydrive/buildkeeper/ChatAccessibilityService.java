@@ -80,6 +80,10 @@ public class ChatAccessibilityService extends AccessibilityService {
             }
 
             if (stage==1) {
+                if (isBusy(root)) {
+                    handler.postDelayed(this, 5000);
+                    return;
+                }
                 AccessibilityNodeInfo edit=findEditable(root);
                 if (edit!=null) {
                     Bundle b=new Bundle();
@@ -100,9 +104,21 @@ public class ChatAccessibilityService extends AccessibilityService {
                     AccessibilityNodeInfo c=clickableParent(send);
                     if (c!=null && c.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                         lastSent=System.currentTimeMillis();
+                        getSharedPreferences("keeper",MODE_PRIVATE).edit().putBoolean("awaiting_idle",true).apply();
                         stage=3;
+                        handler.postDelayed(this, 5000);
                     }
                 }
+                return;
+            }
+
+            if (stage==3) {
+                if (isBusy(root)) {
+                    handler.postDelayed(this, 5000);
+                    return;
+                }
+                getSharedPreferences("keeper",MODE_PRIVATE).edit().putBoolean("awaiting_idle",false).apply();
+                stage=4;
             }
         }
     };
@@ -157,6 +173,12 @@ public class ChatAccessibilityService extends AccessibilityService {
             if (r!=null) return r;
         }
         return null;
+    }
+
+    private boolean isBusy(AccessibilityNodeInfo root) {
+        if (findByAnyDescription(root,new String[]{"Stop generating","Stop response","Stop"})!=null) return true;
+        AccessibilityNodeInfo thinking=findTextContains(root,"Thinking");
+        return thinking!=null;
     }
 
     private AccessibilityNodeInfo clickableParent(AccessibilityNodeInfo n) {
