@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">WhyDrive Build Keeper</string>
+    <string name="accessibility_desc">Allows WhyDrive Build Keeper to open the selected WhyDrive ChatGPT conversations and send the continuation prompt automatically.</string>
+</resources>
