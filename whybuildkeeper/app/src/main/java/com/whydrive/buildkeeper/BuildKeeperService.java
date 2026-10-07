@@ -14,6 +14,11 @@ public class BuildKeeperService extends Service {
             SharedPreferences p = getSharedPreferences("keeper", MODE_PRIVATE);
             if (!p.getBoolean("running", false)) return;
 
+            if (p.getBoolean("awaiting_idle", false)) {
+                handler.postDelayed(this, 30_000L);
+                return;
+            }
+
             String[] titles = {
                 p.getString("driver","WhyDrive Driver APK"),
                 p.getString("customer","WhyDrive customer app"),
@@ -50,7 +55,10 @@ public class BuildKeeperService extends Service {
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent==null ? "START" : intent.getAction();
         if ("STOP".equals(action)) {
-            getSharedPreferences("keeper",MODE_PRIVATE).edit().putBoolean("running",false).apply();
+            getSharedPreferences("keeper",MODE_PRIVATE).edit()
+                    .putBoolean("running",false)
+                    .putBoolean("awaiting_idle",false)
+                    .apply();
             handler.removeCallbacksAndMessages(null);
             if (wakeLock!=null && wakeLock.isHeld()) wakeLock.release();
             stopForeground(true);
@@ -58,7 +66,10 @@ public class BuildKeeperService extends Service {
             return START_NOT_STICKY;
         }
 
-        getSharedPreferences("keeper",MODE_PRIVATE).edit().putBoolean("running",true).apply();
+        getSharedPreferences("keeper",MODE_PRIVATE).edit()
+                .putBoolean("running",true)
+                .putBoolean("awaiting_idle",false)
+                .apply();
         startForeground(1001, notification());
         if (!wakeLock.isHeld()) wakeLock.acquire();
         handler.removeCallbacks(cycle);
