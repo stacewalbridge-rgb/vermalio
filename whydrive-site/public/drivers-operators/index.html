@@ -26,9 +26,8 @@
 <link rel="icon" href="/assets/img/brand/icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/assets/img/brand/icon-180.png">
 <link rel="manifest" href="/site.webmanifest">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Outfit:wght@500;600;700&amp;display=swap">
+<link rel="preload" href="/assets/fonts/outfit-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/css/site.css?v=20261021">
 <script>document.documentElement.classList.remove('no-js')</script>
 <script src="/assets/js/site.js?v=20261021" defer></script>
@@ -263,6 +262,13 @@
       <h2 class="h2" id="rollout-title">More areas. More bookings. <span class="gold-text">Fewer empty miles.</span></h2>
       <p class="lead">WhyDrive is rolling out area by area. Every new area adds more places you can receive bookings from &mdash; and more chances to turn a drop-off into your next pickup.</p>
     </div>
+    <div class="photo-frame reveal mb-2">
+      <picture>
+        <source type="image/webp" srcset="/assets/img/photos/widemouth-aerial-800.webp 800w, /assets/img/photos/widemouth-aerial-1600.webp 1600w" sizes="(min-width: 1200px) 1136px, 100vw">
+        <img src="/assets/img/photos/widemouth-aerial-800.webp" width="800" height="530" alt="Aerial view of Widemouth Bay and the surrounding countryside near Bude, North Cornwall." loading="lazy" style="aspect-ratio:21/9">
+      </picture>
+      <span class="photo-credit">Widemouth Bay, North Cornwall. Photo: <a href="https://www.flickr.com/photos/29372296@N00/29312833893" rel="noopener">John D Fielding</a>, <a href="https://creativecommons.org/licenses/by/2.0/" rel="noopener license">CC BY 2.0</a></span>
+    </div>
     <div class="roadmap">
       <article class="glass phase reveal">
         <span class="status status-pilot">Pilot now</span>
@@ -429,13 +435,13 @@
         <div class="table-wrap">
           <table class="examples">
             <caption class="sr-only">Number of additional bookings whose gross fares exceed a £39 weekly subscription</caption>
-            <thead><tr><th scope="col">Average fare</th><th scope="col">Bookings</th><th scope="col">Gross fares</th></tr></thead>
+            <thead><tr><th scope="col">Average fare</th><th scope="col">Bookings</th><th scope="col">Gross fares vs £39</th></tr></thead>
             <tbody>
-              <tr><td>£15</td><td>3</td><td>£45 &mdash; exceeds £39</td></tr>
-              <tr><td>£20</td><td>2</td><td>£40 &mdash; exceeds £39</td></tr>
-              <tr><td>£25</td><td>2</td><td>£50 &mdash; exceeds £39</td></tr>
-              <tr><td>£40</td><td>1</td><td>£40 &mdash; exceeds £39</td></tr>
-              <tr><td>£80</td><td>1</td><td>£80 &mdash; exceeds £39</td></tr>
+              <tr><td>£15</td><td>3</td><td>£45 ✓</td></tr>
+              <tr><td>£20</td><td>2</td><td>£40 ✓</td></tr>
+              <tr><td>£25</td><td>2</td><td>£50 ✓</td></tr>
+              <tr><td>£40</td><td>1</td><td>£40 ✓</td></tr>
+              <tr><td>£80</td><td>1</td><td>£80 ✓</td></tr>
             </tbody>
           </table>
         </div>

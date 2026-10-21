@@ -1,6 +1,10 @@
 /* WhyDrive — whydrive.co.uk
    Design system: deep navy + metallic gold/silver, HUD circuitry, light streaks, frosted glass. */
 
+/* Self-hosted variable fonts: Inter and Outfit (SIL Open Font License 1.1), latin subset. */
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400 700; font-display: optional; src: url('/assets/fonts/inter-var.woff2') format('woff2'); unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F; }
+@font-face { font-family: 'Outfit'; font-style: normal; font-weight: 500 700; font-display: swap; src: url('/assets/fonts/outfit-var.woff2') format('woff2'); unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F; }
+
 :root {
   --ink-975: #02060f;
   --ink-950: #040a18;
@@ -164,14 +168,14 @@ body.menu-open { overflow: hidden; }
 /* Decorative FX layers */
 .fx { position: absolute; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
 .streak { position: absolute; left: -20%; width: 140%; height: 2px; border-radius: 2px; }
-.streak::before { content: ""; position: absolute; left: 15%; right: 15%; top: -40px; height: 82px; border-radius: 50%; filter: blur(30px); opacity: .55; }
+.streak::before { content: ""; position: absolute; left: 10%; right: 10%; top: -60px; height: 122px; border-radius: 50%; opacity: .5; }
 .streak.gold { background: linear-gradient(90deg, transparent 5%, rgba(255, 214, 130, .95) 46%, rgba(255, 170, 60, .55) 62%, transparent 86%); box-shadow: 0 0 14px 2px rgba(255, 190, 80, .55); }
 .streak.gold::before { background: radial-gradient(closest-side, rgba(255, 170, 50, .8), transparent); }
 .streak.blue { height: 1.5px; background: linear-gradient(90deg, transparent 10%, rgba(120, 170, 255, .9) 45%, rgba(120, 220, 255, .4) 62%, transparent 90%); box-shadow: 0 0 12px 2px rgba(90, 140, 255, .45); }
 .streak.blue::before { background: radial-gradient(closest-side, rgba(70, 120, 255, .65), transparent); }
-.flare { position: absolute; width: 560px; height: 560px; border-radius: 50%; filter: blur(70px); opacity: .5; }
-.flare.gold { background: radial-gradient(closest-side, rgba(247, 170, 50, .6), transparent); }
-.flare.blue { background: radial-gradient(closest-side, rgba(50, 110, 255, .6), transparent); }
+.flare { position: absolute; width: 700px; height: 700px; border-radius: 50%; opacity: .45; }
+.flare.gold { background: radial-gradient(closest-side, rgba(247, 170, 50, .55), rgba(247, 170, 50, .18) 45%, transparent); }
+.flare.blue { background: radial-gradient(closest-side, rgba(50, 110, 255, .55), rgba(50, 110, 255, .18) 45%, transparent); }
 .particles { position: absolute; inset: 0; background-image: radial-gradient(1.6px 1.6px at 12% 22%, rgba(255, 220, 150, .95), transparent 60%), radial-gradient(1px 1px at 28% 68%, rgba(160, 200, 255, .9), transparent 60%), radial-gradient(1.6px 1.6px at 46% 12%, rgba(160, 200, 255, .85), transparent 60%), radial-gradient(1px 1px at 63% 44%, rgba(255, 220, 150, .85), transparent 60%), radial-gradient(1.6px 1.6px at 78% 76%, rgba(160, 200, 255, .9), transparent 60%), radial-gradient(1px 1px at 88% 18%, rgba(255, 220, 150, .9), transparent 60%), radial-gradient(1px 1px at 6% 88%, rgba(160, 200, 255, .7), transparent 60%), radial-gradient(1.6px 1.6px at 94% 52%, rgba(255, 220, 150, .75), transparent 60%); animation: twinkle 6s ease-in-out infinite alternate; }
 @keyframes twinkle { from { opacity: .45; } to { opacity: 1; } }
 .hud-edge { position: absolute; top: 0; bottom: 0; width: 130px; pointer-events: none; z-index: 1; }
@@ -237,7 +241,7 @@ body.menu-open { overflow: hidden; }
 .showcase-stage { position: relative; }
 .showcase-stage > .streak.gold { top: 52%; transform: rotate(-9deg); }
 .showcase-stage > .streak.blue { top: 60%; transform: rotate(5deg); }
-.showcase-glow { position: absolute; left: 50%; top: 45%; width: min(1100px, 140vw); height: 80%; transform: translate(-50%, -50%); background: radial-gradient(closest-side, rgba(234, 167, 51, .3), rgba(40, 90, 220, .2) 55%, transparent); filter: blur(24px); pointer-events: none; }
+.showcase-glow { position: absolute; left: 50%; top: 45%; width: min(1100px, 140vw); height: 80%; transform: translate(-50%, -50%); background: radial-gradient(closest-side, rgba(234, 167, 51, .3), rgba(40, 90, 220, .2) 55%, transparent); pointer-events: none; }
 .phones { position: relative; display: flex; gap: clamp(14px, 2.2vw, 30px); justify-content: center; align-items: flex-start; list-style: none; margin: 0; padding: 0; z-index: 2; }
 .phone-item { flex: 0 0 auto; width: clamp(220px, 21vw, 262px); margin: 0; }
 .phone { position: relative; border-radius: 46px; padding: 10px; background: linear-gradient(145deg, #727a8c 0%, #252a33 18%, #0c0e13 50%, #2e3440 78%, #8d95a6 100%); box-shadow: 0 0 0 1px #9aa3b5 inset, 0 0 0 2.5px #0b0d12 inset, 0 40px 70px rgba(0, 0, 0, .6), 0 0 0 1px rgba(0, 0, 0, .6), 0 0 60px rgba(247, 180, 60, .16); }
@@ -265,14 +269,28 @@ body.menu-open { overflow: hidden; }
   .phones::-webkit-scrollbar { display: none; }
   .phone-item { width: 240px; scroll-snap-align: center; }
   /* Coverflow, enabled by JS */
-  .phones.is-coverflow { display: block; overflow: visible; padding: 0; margin: 0 calc(-1 * var(--gutter)); height: calc(min(56vw, 290px) * 2.164 + 140px); perspective: 1100px; touch-action: pan-y; }
-  .phones.is-coverflow .phone-item { --o: 0; --abs: 0; position: absolute; left: 50%; top: 0; width: min(56vw, 290px); transform: translateX(-50%) translateX(calc(var(--o) * min(40vw, 210px))) translateZ(calc(var(--abs) * -120px)) rotateY(calc(var(--o) * -24deg)); transition: transform .65s cubic-bezier(.2, .75, .2, 1), filter .65s, opacity .65s; z-index: calc(10 - var(--abs)); filter: brightness(calc(1 - var(--abs) * .3)); }
-  .phones.is-coverflow .phone-item[data-far="true"] { opacity: 0; pointer-events: none; }
-  .phones.is-coverflow .phone-item:not(.is-active) .phone-caption { opacity: 0; }
-  .phones.is-coverflow .phone-item:not(.is-active) { cursor: pointer; }
+  html:not(.no-js) .phones { display: block; overflow: visible; padding: 0; margin: 0 calc(-1 * var(--gutter)); height: calc(min(56vw, 290px) * 2.164 + 140px); perspective: 1100px; touch-action: pan-y; }
+  html:not(.no-js) .phones .phone-item { --o: 0; --abs: 0; position: absolute; left: 50%; top: 0; width: min(56vw, 290px); transform: translateX(-50%) translateX(calc(var(--o) * min(40vw, 210px))) translateZ(calc(var(--abs) * -120px)) rotateY(calc(var(--o) * -24deg)); transition: transform .65s cubic-bezier(.2, .75, .2, 1), filter .65s, opacity .65s; z-index: calc(10 - var(--abs)); filter: brightness(calc(1 - var(--abs) * .3)); }
+  html:not(.no-js) .phones .phone-item[data-far="true"] { opacity: 0; pointer-events: none; }
+  html:not(.no-js) .phones .phone-item:not(.is-active) .phone-caption { opacity: 0; }
+  html:not(.no-js) .phones .phone-item:not(.is-active) { cursor: pointer; }
   .showcase-dots { display: flex; justify-content: center; gap: 8px; }
-  .showcase-dots button { width: 10px; height: 10px; padding: 0; border-radius: 99px; border: 0; background: rgba(255, 255, 255, .28); cursor: pointer; transition: width .25s, background .25s; }
-  .showcase-dots button[aria-current="true"] { width: 30px; background: var(--gold-400); box-shadow: 0 0 10px rgba(247, 194, 82, .7); }
+  .showcase-dots { gap: 2px !important; }
+  .showcase-dots button { width: 24px; height: 28px; padding: 0; border: 0; background: none; cursor: pointer; position: relative; transition: width .25s; }
+  .showcase-dots button::before { content: ""; position: absolute; left: 7px; right: 7px; top: 9px; height: 10px; border-radius: 99px; background: rgba(255, 255, 255, .3); transition: background .25s; }
+  .showcase-dots button[aria-current="true"] { width: 44px; }
+  .showcase-dots button[aria-current="true"]::before { background: var(--gold-400); box-shadow: 0 0 10px rgba(247, 194, 82, .7); }
+}
+
+
+@media (max-width: 1023px) {
+  /* Initial coverflow positions before JS runs (matches active = 0), so there is no layout shift. */
+  html:not(.no-js) .phones .phone-item:nth-child(2) { --o: 1; --abs: 1; }
+  html:not(.no-js) .phones .phone-item:nth-child(3) { --o: 2; --abs: 2; opacity: 0; }
+  html:not(.no-js) .phones .phone-item:nth-child(4) { --o: -1; --abs: 1; }
+  html:not(.no-js) .phones .phone-item:not(:first-child) .phone-caption { opacity: 0; }
+  html:not(.no-js) .phones .phone-item[data-far="false"] { opacity: 1; }
+  html:not(.no-js) .phones .phone-item.is-active .phone-caption { opacity: 1; }
 }
 
 /* Statement band */
@@ -319,7 +337,7 @@ body.menu-open { overflow: hidden; }
 .step h3 .sl { color: var(--gold-400); margin: 0 6px; text-shadow: 0 0 12px rgba(247, 194, 82, .7); }
 .step p { margin-bottom: .5em; font-size: 16.5px; }
 .step .fine { font-size: 14px; color: var(--faint-on-dark); }
-@media (max-width: 560px) { .step { gap: 14px; } .step-icon { width: 92px; height: 92px; } .step h3 { font-size: 22px; } }
+@media (max-width: 700px) { .step { flex-direction: column; align-items: flex-start; gap: 12px; } .step-icon { width: 92px; height: 92px; } .step h3 { font-size: 24px; } }
 
 /* Feature tiles */
 .feature { position: relative; display: flex; gap: 16px; align-items: flex-start; padding: 22px; border-radius: 18px; background: linear-gradient(180deg, #fff, #f6f8fc); border: 1px solid var(--line); box-shadow: var(--shadow-soft); transition: transform .3s ease, box-shadow .3s ease; }
@@ -491,8 +509,8 @@ textarea.input { min-height: 110px; resize: vertical; line-height: 1.5; }
 .field.has-error .choice, .choice.has-error { border-color: var(--red); }
 .vehicle { position: relative; border-radius: 18px; border: 1.5px solid var(--line); background: var(--paper); padding: 20px; margin-bottom: 16px; }
 .vehicle-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
-.vehicle-head h4 { margin: 0; font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 10px; color: var(--text); }
-.vehicle-head h4 svg { width: 22px; height: 22px; color: var(--gold-600); }
+.vehicle-head .vh { margin: 0; font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 10px; color: var(--text); }
+.vehicle-head .vh svg { width: 22px; height: 22px; color: var(--gold-600); }
 .btn-remove { display: inline-flex; align-items: center; gap: 6px; min-height: 42px; padding: 0 14px; border-radius: 10px; border: 1.5px solid #f0c9c4; background: #fff; color: var(--red); font-weight: 600; font-size: 14.5px; cursor: pointer; }
 .btn-remove:hover { background: #fff5f4; }
 .btn-remove[hidden] { display: none; }

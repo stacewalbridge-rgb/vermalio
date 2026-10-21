@@ -104,7 +104,6 @@
 
     function layout() {
       var on = small.matches;
-      phones.classList.toggle('is-coverflow', on);
       items.forEach(function (item, i) {
         var o = i - active;
         if (o > n / 2) o -= n;
@@ -118,6 +117,7 @@
           item.style.removeProperty('--o');
           item.style.removeProperty('--abs');
           item.removeAttribute('data-far');
+          item.style.removeProperty('opacity');
           item.removeAttribute('aria-hidden');
         }
         item.classList.toggle('is-active', o === 0);

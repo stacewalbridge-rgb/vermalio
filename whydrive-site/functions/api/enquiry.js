@@ -6,6 +6,7 @@
 //   ENQUIRY_FROM    (optional, default "WhyDrive Website <website@whydrive.co.uk>")
 //   ACK_FROM        (optional, default "WhyDrive <driver@whydrive.co.uk>")
 //   RATE_LIMIT      (optional KV namespace binding for cross-isolate rate limiting)
+//   RESEND_API_URL  (optional, test override for the Resend endpoint)
 
 const MAX_BODY = 64 * 1024;
 const MAX_VEHICLES = 50;
@@ -279,7 +280,7 @@ Powered by Vamalio Technologies Ltd.`;
 }
 
 async function sendEmail(env, payload, idempotencyKey) {
-  const res = await fetch('https://api.resend.com/emails', {
+  const res = await fetch(env.RESEND_API_URL || 'https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
