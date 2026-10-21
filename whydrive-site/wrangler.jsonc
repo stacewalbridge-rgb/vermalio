@@ -16,6 +16,10 @@
     { "pattern": "whydrive.co.uk", "custom_domain": true },
     { "pattern": "www.whydrive.co.uk", "custom_domain": true }
   ],
+  "vars": {
+    // Shown when the form cannot send. Switch back to driver@whydrive.co.uk once that inbox receives mail.
+    "FALLBACK_EMAIL": "support@vamalio.com"
+  },
   "workers_dev": true,
   "observability": { "enabled": true }
 }

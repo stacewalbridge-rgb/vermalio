@@ -7,6 +7,7 @@
 //   ACK_FROM        (optional, default "WhyDrive <driver@whydrive.co.uk>")
 //   RATE_LIMIT      (optional KV namespace binding for cross-isolate rate limiting)
 //   RESEND_API_URL  (optional, test override for the Resend endpoint)
+//   FALLBACK_EMAIL  (optional, address shown when sending fails; default driver@whydrive.co.uk)
 
 const MAX_BODY = 64 * 1024;
 const MAX_VEHICLES = 50;
@@ -304,6 +305,7 @@ function htmlPage(status, title, message) {
 }
 
 export async function onRequestPost({ request, env }) {
+  const fallback = env.FALLBACK_EMAIL || 'driver@whydrive.co.uk';
   const contentType = request.headers.get('content-type') || '';
   const wantsJson = contentType.includes('application/json');
   const fail = (status, message, extra = {}) => wantsJson
@@ -345,11 +347,11 @@ export async function onRequestPost({ request, env }) {
 
   const ip = request.headers.get('cf-connecting-ip') || 'unknown';
   if (await rateLimited(env, ip)) {
-    return fail(429, 'We have received several enquiries from your connection recently. Please wait a while and try again, or email driver@whydrive.co.uk.');
+    return fail(429, `We have received several enquiries from your connection recently. Please wait a while and try again, or email ${fallback}.`);
   }
 
   if (!env.RESEND_API_KEY) {
-    return fail(503, 'Our enquiry service is temporarily unavailable. Please email driver@whydrive.co.uk and we will reply as soon as we can.');
+    return fail(503, `Our enquiry service is temporarily unavailable. Please email ${fallback} and we will reply as soon as we can.`);
   }
 
   const now = Date.now();
@@ -369,7 +371,7 @@ export async function onRequestPost({ request, env }) {
 
   if (!sent.ok) {
     console.error('enquiry_send_failed', sent.status, sent.error);
-    return fail(502, 'Sorry — we could not send your enquiry just now. Your details are still on the form. Please try again in a moment, or email driver@whydrive.co.uk.');
+    return fail(502, `Sorry — we could not send your enquiry just now. Your details are still on the form. Please try again in a moment, or email ${fallback}.`);
   }
 
   let acknowledgement = 'not_sent';
