@@ -230,16 +230,17 @@ export function buildEmail(v, ref, receivedAt) {
   const vehicleHead = ['#', 'Make', 'Model', 'Registration', 'Type', 'Seats', 'Luggage', 'Licensing', 'Licence expiry'];
 
   const td = 'padding:8px 10px;border:1px solid #d9e1ec;vertical-align:top;font-size:14px';
-  const html = `<!doctype html><html><body style="margin:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#0b1830">
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#0b1830">
 <div style="max-width:760px;margin:0 auto;padding:24px">
-<div style="background:#0a1834;color:#fff;border-radius:14px 14px 0 0;padding:18px 22px"><div style="font-size:12px;letter-spacing:.12em;color:#ffd889;text-transform:uppercase">WhyDrive website</div><div style="font-size:22px;font-weight:bold;margin-top:4px">New driver / operator enquiry</div></div>
-<div style="background:#fff;border:1px solid #d9e1ec;border-top:0;border-radius:0 0 14px 14px;padding:20px 22px">
+${emailHeader()}
+<div style="background:#0a1834;color:#fff;padding:18px 22px"><div style="font-size:12px;letter-spacing:.12em;color:#ffd889;text-transform:uppercase">WhyDrive website</div><div style="font-size:22px;font-weight:bold;margin-top:4px">New driver / operator enquiry</div></div>
+<div style="background:#fff;border:1px solid #d9e1ec;border-top:0;border-bottom:0;padding:20px 22px">
 <table style="border-collapse:collapse;width:100%">${rows.map(([k, val]) => `<tr><th style="${td};text-align:left;background:#f3f6fb;width:42%">${esc(k)}</th><td style="${td}">${esc(val)}</td></tr>`).join('')}</table>
 <h3 style="margin:22px 0 8px">Vehicles (${v.vehicles.length})</h3>
 <div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%"><tr>${vehicleHead.map(h => `<th style="${td};background:#f3f6fb;text-align:left">${esc(h)}</th>`).join('')}</tr>${vehicleRows.map(r => `<tr>${r.map(c => `<td style="${td}">${esc(c)}</td>`).join('')}</tr>`).join('')}</table></div>
 ${blocks.map(([k, val]) => `<h3 style="margin:22px 0 6px">${esc(k)}</h3><div style="white-space:pre-wrap;font-size:14px;line-height:1.5;background:#f8fafc;border:1px solid #e3e9f2;border-radius:10px;padding:12px">${esc(val)}</div>`).join('')}
 <p style="font-size:13px;color:#56657f;margin-top:22px">Consent: the applicant confirmed they read the Privacy Policy and agreed to be contacted about this enquiry. Reply to this email to respond directly to ${esc(v.contactName)}.</p>
-</div></div></body></html>`;
+</div>${emailFooter()}</div></body></html>`;
 
   const text = [
     'New WhyDrive driver / operator enquiry',
@@ -257,6 +258,17 @@ ${blocks.map(([k, val]) => `<h3 style="margin:22px 0 6px">${esc(k)}</h3><div sty
   return { subject, html, text };
 }
 
+const EMAIL_ASSETS = 'https://whydrive.co.uk/assets/img/email';
+
+// Branded email header (WhyDrive logo) and footer (Vamalio logo). Hosted PNGs: Gmail/Outlook don't render SVG or WebP.
+function emailHeader() {
+  return `<div style="background:#fff;border:1px solid #d9e1ec;border-bottom:0;border-radius:14px 14px 0 0;padding:22px 22px 8px;text-align:center"><a href="https://whydrive.co.uk" style="text-decoration:none"><img src="${EMAIL_ASSETS}/whydrive-logo-email.png" width="240" height="158" alt="WhyDrive — Your Ride Your Way" style="display:inline-block;border:0;width:240px;height:auto;max-width:100%"></a></div>`;
+}
+
+function emailFooter() {
+  return `<div style="background:#0a1834;border-radius:0 0 14px 14px;padding:20px 22px;text-align:center;color:#c9d4e6;font-size:12px;line-height:1.6"><div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#ffd889;margin-bottom:8px">Powered by</div><a href="https://vamalio.com" style="text-decoration:none"><img src="${EMAIL_ASSETS}/vamalio-logo-email.png" width="300" height="71" alt="Vamalio Technologies Ltd" style="display:inline-block;border:0;width:300px;height:auto;max-width:100%"></a><div style="margin-top:10px">Vamalio Technologies Ltd &middot; Intelligent Technology. Smarter Journeys.<br>Registered in England and Wales, company number 17460666.<br><a href="https://whydrive.co.uk" style="color:#ffd889">whydrive.co.uk</a> &middot; <a href="mailto:driver@whydrive.co.uk" style="color:#ffd889">driver@whydrive.co.uk</a></div></div>`;
+}
+
 function buildAck(v, ref) {
   const subject = `We've received your WhyDrive enquiry (${ref})`;
   const text = `Hello ${v.contactName},
@@ -270,13 +282,13 @@ If you need to add anything, simply reply to this email.
 WhyDrive — Your Ride Your Way
 driver@whydrive.co.uk · https://whydrive.co.uk
 Powered by Vamalio Technologies Ltd.`;
-  const html = `<!doctype html><html><body style="margin:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#0b1830"><div style="max-width:600px;margin:0 auto;padding:24px"><div style="background:#fff;border:1px solid #d9e1ec;border-radius:14px;padding:24px">
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#0b1830"><div style="max-width:600px;margin:0 auto;padding:24px">${emailHeader()}<div style="background:#fff;border:1px solid #d9e1ec;border-top:0;border-bottom:0;padding:8px 24px 24px">
 <p style="font-size:16px">Hello ${esc(v.contactName)},</p>
 <p style="font-size:16px;line-height:1.55">Thank you for your interest in joining <strong>WhyDrive</strong>. We've received your enquiry for <strong>${esc(v.companyName)}</strong> (${v.vehicles.length} vehicle${v.vehicles.length === 1 ? '' : 's'}).</p>
 <p style="font-size:16px">Your reference is <strong style="font-family:monospace">${esc(ref)}</strong>.</p>
 <p style="font-size:16px;line-height:1.55">A member of the WhyDrive team will review it and contact you about next steps. No payment is taken at this stage. If you need to add anything, simply reply to this email.</p>
-<p style="font-size:14px;color:#56657f;margin-top:24px">WhyDrive — Your Ride Your Way<br>driver@whydrive.co.uk · <a href="https://whydrive.co.uk">whydrive.co.uk</a><br>Powered by Vamalio Technologies Ltd.</p>
-</div></div></body></html>`;
+<p style="font-size:15px;margin-top:24px">Kind regards,<br><strong>The WhyDrive team</strong><br><span style="color:#b77a17">Your Ride. Your Way.</span></p>
+</div>${emailFooter()}</div></body></html>`;
   return { subject, html, text };
 }
 
