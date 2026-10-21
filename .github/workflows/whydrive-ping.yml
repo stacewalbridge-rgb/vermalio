@@ -1,0 +1,9 @@
+name: WhyDrive runner check
+on:
+  push:
+    branches: [claude/whydrive-website-build-cm2orl]
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "runner ok"
