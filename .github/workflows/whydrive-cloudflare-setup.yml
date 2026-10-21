@@ -27,7 +27,11 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          r() { curl -sS --max-time 30 -H "Authorization: Bearer $RESEND_API_KEY" -H "Content-Type: application/json" "$@"; }
+          RAW="${RESEND_API_KEY:-}"
+          KEY=$(printf '%s' "$RAW" | tr -d '[:space:]"'"'"'')
+          echo "raw length ${#RAW}, cleaned length ${#KEY}, starts with re_: $([[ "$KEY" == re_* ]] && echo yes || echo no), contained whitespace/quotes: $([ "${#RAW}" != "${#KEY}" ] && echo yes || echo no)"
+          echo "secret source: $([ -n "${{ secrets.RESEND_API_KEY != '' }}" ] && echo checked)"
+          r() { curl -sS --max-time 30 -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" "$@"; }
           echo "domains:"; r https://api.resend.com/domains | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);if(!j.data){console.log(JSON.stringify(j).slice(0,300));return};for(const d of j.data)console.log(' ',d.name,d.status,d.region,JSON.stringify(d.capabilities||{}),d.id)})"
           ID=$(r https://api.resend.com/domains | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);const d=(j.data||[]).find(x=>x.name==='whydrive.co.uk');process.stdout.write(d?d.id:'')})")
           if [ -n "$ID" ]; then r "https://api.resend.com/domains/$ID" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log('status',j.status);for(const x of (j.records||[]))console.log(' ',x.record,x.type,x.name,x.status,String(x.value).slice(0,60),x.priority||'')})"; fi
