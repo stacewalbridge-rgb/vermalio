@@ -1,0 +1,86 @@
+name: WhyDrive website deploy
+
+# Deploys the WhyDrive marketing website (whydrive-site/) to the Cloudflare Pages
+# project "whydrive". DEPLOY_TARGET selects the Pages branch:
+#   preview -> https://preview.whydrive.pages.dev (not indexed)
+#   main    -> production (whydrive.co.uk once its DNS records point at Pages)
+
+on:
+  push:
+    branches: [claude/whydrive-website-build-cm2orl]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: whydrive-website-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || secrets.WHYDRIVE_RESEND_API_KEY }}
+      WRANGLER_SEND_METRICS: "false"
+      PROJECT_NAME: whydrive
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check site
+        working-directory: whydrive-site
+        run: |
+          set -euo pipefail
+          test -f public/index.html
+          test -f functions/api/enquiry.js
+          node --check functions/api/enquiry.js || true
+          TARGET=$(tr -d ' \n' < DEPLOY_TARGET)
+          case "$TARGET" in preview|main) ;; *) echo "Bad DEPLOY_TARGET: $TARGET"; exit 1;; esac
+          echo "TARGET=$TARGET" >> "$GITHUB_ENV"
+          echo "Deploy target: $TARGET"
+          echo "Resend key available to workflow: $([ -n "${RESEND_API_KEY:-}" ] && echo yes || echo no)"
+
+      - name: Install Wrangler
+        run: npm install --no-save --no-audit --no-fund wrangler@4
+
+      - name: Deploy to Cloudflare Pages
+        working-directory: whydrive-site
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" && test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          ../node_modules/.bin/wrangler pages deploy public \
+            --project-name="${PROJECT_NAME}" \
+            --branch="${TARGET}" \
+            --commit-hash="${GITHUB_SHA}" \
+            --commit-message="WhyDrive website ${GITHUB_SHA::7}" \
+            --commit-dirty=true | tee /tmp/deploy.txt
+          URL=$(grep -Eo 'https://[^ ]+\.pages\.dev' /tmp/deploy.txt | tail -1 || true)
+          echo "Deployment URL: ${URL}"
+          echo "Branch alias: https://${TARGET}.${PROJECT_NAME}.pages.dev"
+
+      - name: Configure enquiry email secret (if provided)
+        working-directory: whydrive-site
+        run: |
+          set -euo pipefail
+          if [ -n "${RESEND_API_KEY:-}" ]; then
+            for ENVNAME in production preview; do
+              printf '%s' "$RESEND_API_KEY" | ../node_modules/.bin/wrangler pages secret put RESEND_API_KEY --project-name="${PROJECT_NAME}" --env "$ENVNAME" >/dev/null && echo "RESEND_API_KEY set for $ENVNAME"
+            done
+          else
+            echo "RESEND_API_KEY not available as a repository secret; enquiry email stays disabled."
+          fi
+
+      - name: Report Pages custom domains and health
+        run: |
+          set -euo pipefail
+          curl --max-time 30 -sS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${PROJECT_NAME}/domains" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);for(const d of (j.result||[]))console.log(d.name, d.status, d.verification_data&&d.verification_data.error_message||'')})" || true
+          sleep 20
+          curl --max-time 30 -sS "https://${TARGET}.${PROJECT_NAME}.pages.dev/api/health" || true
