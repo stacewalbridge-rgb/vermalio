@@ -1,0 +1,59 @@
+name: WhyDrive Cloudflare domain setup
+
+# Connects whydrive.co.uk / www.whydrive.co.uk to the Pages project "whydrive".
+# Safe by design: lists the zone, only CREATES missing website records (never edits or deletes
+# DNS records), and re-registers the Pages custom domains so Cloudflare re-validates them.
+
+on:
+  push:
+    branches: [claude/whydrive-website-build-cm2orl]
+    paths: [".github/workflows/whydrive-cloudflare-setup.yml", "whydrive-site/SETUP_RUN"]
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_TOKEN }}
+      CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+      ZONE_NAME: whydrive.co.uk
+      PROJECT: whydrive
+    steps:
+      - name: Set up domain
+        shell: bash
+        run: |
+          set -uo pipefail
+          api() { curl -sS --max-time 30 -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" "$@"; }
+          j() { node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);$1})"; }
+          echo "== Token"; api https://api.cloudflare.com/client/v4/user/tokens/verify | j "console.log(j.success, j.result&&j.result.status, JSON.stringify(j.errors))"
+          ZONE=$(api "https://api.cloudflare.com/client/v4/zones?name=$ZONE_NAME" | j "process.stdout.write((j.result&&j.result[0]&&j.result[0].id)||'')")
+          echo "Zone found: $([ -n "$ZONE" ] && echo yes || echo no)"
+          echo "== Current DNS records"
+          api "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records?per_page=100" | j "if(!j.success){console.log('LIST FAILED',JSON.stringify(j.errors));return};for(const r of j.result)console.log(r.type.padEnd(6),r.name.padEnd(40),String(r.content).slice(0,70),r.proxied?'proxied':'')"
+          for NAME in whydrive.co.uk www.whydrive.co.uk; do
+            HAS=$(api "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records?name=$NAME" | j "process.stdout.write(String((j.result||[]).filter(r=>['A','AAAA','CNAME'].includes(r.type)).length))")
+            if [ "$HAS" = "0" ]; then
+              echo "== Creating CNAME $NAME -> $PROJECT.pages.dev"
+              api -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records" --data "{\"type\":\"CNAME\",\"name\":\"$NAME\",\"content\":\"$PROJECT.pages.dev\",\"ttl\":1,\"proxied\":true,\"comment\":\"WhyDrive website (Cloudflare Pages)\"}" | j "console.log(j.success, JSON.stringify(j.errors))"
+            else
+              echo "== $NAME already has $HAS A/AAAA/CNAME record(s); left unchanged"
+            fi
+          done
+          echo "== Pages custom domains"
+          for NAME in whydrive.co.uk www.whydrive.co.uk; do
+            STATUS=$(api "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/$PROJECT/domains/$NAME" | j "process.stdout.write((j.result&&j.result.status)||'missing')")
+            echo "$NAME: $STATUS"
+            if [ "$STATUS" != "active" ]; then
+              [ "$STATUS" != "missing" ] && api -X DELETE "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/$PROJECT/domains/$NAME" | j "console.log('  removed stale:', j.success, JSON.stringify(j.errors))"
+              api -X POST "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/$PROJECT/domains" --data "{\"name\":\"$NAME\"}" | j "console.log('  added:', j.success, j.result&&j.result.status, JSON.stringify(j.errors))"
+            fi
+          done
+          sleep 30
+          for NAME in whydrive.co.uk www.whydrive.co.uk; do
+            api "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/$PROJECT/domains/$NAME" | j "const r=j.result||{};console.log('$NAME', r.status, r.verification_data&&r.verification_data.status, r.verification_data&&r.verification_data.error_message||'', r.validation_data&&r.validation_data.status)"
+          done
+          echo "== Email routing (read only)"
+          api "https://api.cloudflare.com/client/v4/zones/$ZONE/email/routing" | j "console.log(j.success, j.result&&j.result.enabled, j.result&&j.result.status, JSON.stringify(j.errors))"
