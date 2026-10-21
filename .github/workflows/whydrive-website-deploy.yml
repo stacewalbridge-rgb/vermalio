@@ -8,6 +8,12 @@ name: WhyDrive website deploy
 on:
   push:
     branches: [claude/whydrive-website-build-cm2orl]
+    paths-ignore:
+      - "whydrive-site/HANDOFF_REQUEST"
+      - "whydrive-site/handoff/**"
+      - "whydrive-site/SETUP_RUN"
+      - ".github/workflows/whydrive-secret-handoff.yml"
+      - ".github/workflows/whydrive-cloudflare-setup.yml"
   workflow_dispatch:
 
 permissions:
