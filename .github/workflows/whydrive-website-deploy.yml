@@ -65,6 +65,24 @@ jobs:
           echo "Deployment URL: ${URL}"
           echo "Branch alias: https://${TARGET}.${PROJECT_NAME}.pages.dev"
 
+      - name: Publish production Worker and attach whydrive.co.uk
+        if: env.TARGET == 'main'
+        working-directory: whydrive-site
+        run: |
+          set -euo pipefail
+          # The hostnames move from the (never-activated) Pages custom domains to the Worker,
+          # whose custom domains create the DNS records automatically.
+          for NAME in whydrive.co.uk www.whydrive.co.uk; do
+            curl --max-time 30 -sS -X DELETE "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${PROJECT_NAME}/domains/${NAME}" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log('Pages domain $NAME removed:', j.success)})" || true
+          done
+          ../node_modules/.bin/wrangler deploy
+          if [ -n "${RESEND_API_KEY:-}" ]; then
+            printf '%s' "$RESEND_API_KEY" | ../node_modules/.bin/wrangler secret put RESEND_API_KEY >/dev/null && echo "Worker RESEND_API_KEY set" || echo "Could not set Worker RESEND_API_KEY"
+          fi
+          curl --max-time 30 -sS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains?service=whydrive-website" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);for(const d of (j.result||[]))console.log('Worker domain:', d.hostname, '->', d.service)})"
+
       - name: Configure enquiry email secret (if provided)
         working-directory: whydrive-site
         run: |

@@ -1,0 +1,21 @@
+{
+  // Worker deployment of whydrive.co.uk (static assets + API). Custom domains make Cloudflare
+  // create the DNS records for whydrive.co.uk and www.whydrive.co.uk automatically.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "whydrive-website",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash",
+    "run_worker_first": true
+  },
+  "routes": [
+    { "pattern": "whydrive.co.uk", "custom_domain": true },
+    { "pattern": "www.whydrive.co.uk", "custom_domain": true }
+  ],
+  "workers_dev": true,
+  "observability": { "enabled": true }
+}
