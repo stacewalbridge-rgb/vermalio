@@ -22,38 +22,17 @@ jobs:
       ZONE_NAME: whydrive.co.uk
       PROJECT: whydrive
     steps:
-      - name: Set up domain
+      - name: Probe token permissions (read only)
         shell: bash
         run: |
           set -uo pipefail
           api() { curl -sS --max-time 30 -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" "$@"; }
           j() { node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);$1})"; }
-          echo "== Token"; api https://api.cloudflare.com/client/v4/user/tokens/verify | j "console.log(j.success, j.result&&j.result.status, JSON.stringify(j.errors))"
           ZONE=$(api "https://api.cloudflare.com/client/v4/zones?name=$ZONE_NAME" | j "process.stdout.write((j.result&&j.result[0]&&j.result[0].id)||'')")
-          echo "Zone found: $([ -n "$ZONE" ] && echo yes || echo no)"
-          echo "== Current DNS records"
-          api "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records?per_page=100" | j "if(!j.success){console.log('LIST FAILED',JSON.stringify(j.errors));return};for(const r of j.result)console.log(r.type.padEnd(6),r.name.padEnd(40),String(r.content).slice(0,70),r.proxied?'proxied':'')"
-          for NAME in whydrive.co.uk www.whydrive.co.uk; do
-            HAS=$(api "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records?name=$NAME" | j "process.stdout.write(String((j.result||[]).filter(r=>['A','AAAA','CNAME'].includes(r.type)).length))")
-            if [ "$HAS" = "0" ]; then
-              echo "== Creating CNAME $NAME -> $PROJECT.pages.dev"
-              api -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records" --data "{\"type\":\"CNAME\",\"name\":\"$NAME\",\"content\":\"$PROJECT.pages.dev\",\"ttl\":1,\"proxied\":true,\"comment\":\"WhyDrive website (Cloudflare Pages)\"}" | j "console.log(j.success, JSON.stringify(j.errors))"
-            else
-              echo "== $NAME already has $HAS A/AAAA/CNAME record(s); left unchanged"
-            fi
-          done
-          echo "== Pages custom domains"
-          for NAME in whydrive.co.uk www.whydrive.co.uk; do
-            STATUS=$(api "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/$PROJECT/domains/$NAME" | j "process.stdout.write((j.result&&j.result.status)||'missing')")
-            echo "$NAME: $STATUS"
-            if [ "$STATUS" != "active" ]; then
-              [ "$STATUS" != "missing" ] && api -X DELETE "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/$PROJECT/domains/$NAME" | j "console.log('  removed stale:', j.success, JSON.stringify(j.errors))"
-              api -X POST "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/$PROJECT/domains" --data "{\"name\":\"$NAME\"}" | j "console.log('  added:', j.success, j.result&&j.result.status, JSON.stringify(j.errors))"
-            fi
-          done
-          sleep 30
-          for NAME in whydrive.co.uk www.whydrive.co.uk; do
-            api "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/$PROJECT/domains/$NAME" | j "const r=j.result||{};console.log('$NAME', r.status, r.verification_data&&r.verification_data.status, r.verification_data&&r.verification_data.error_message||'', r.validation_data&&r.validation_data.status)"
-          done
-          echo "== Email routing (read only)"
-          api "https://api.cloudflare.com/client/v4/zones/$ZONE/email/routing" | j "console.log(j.success, j.result&&j.result.enabled, j.result&&j.result.status, JSON.stringify(j.errors))"
+          echo "account token verify:"; api "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/tokens/verify" | j "console.log(j.success, j.result&&j.result.status, JSON.stringify(j.errors))"
+          echo "zone workers routes read:"; api "https://api.cloudflare.com/client/v4/zones/$ZONE/workers/routes" | j "console.log(j.success, JSON.stringify(j.errors), (j.result||[]).length)"
+          echo "account workers domains read:"; api "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/domains" | j "console.log(j.success, JSON.stringify(j.errors), (j.result||[]).map(d=>d.hostname+'->'+d.service).join(', '))"
+          echo "workers scripts read:"; api "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/scripts" | j "console.log(j.success, JSON.stringify(j.errors), (j.result||[]).map(s=>s.id).join(', '))"
+          echo "zone settings read:"; api "https://api.cloudflare.com/client/v4/zones/$ZONE/settings/ssl" | j "console.log(j.success, JSON.stringify(j.errors))"
+          echo "zone page rules/rulesets read:"; api "https://api.cloudflare.com/client/v4/zones/$ZONE/rulesets" | j "console.log(j.success, JSON.stringify(j.errors))"
+          echo "email routing addresses read:"; api "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/email/routing/addresses" | j "console.log(j.success, JSON.stringify(j.errors))"
