@@ -27,8 +27,10 @@ async function route(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.hostname === 'www.whydrive.co.uk') {
+    const isProd = url.hostname === 'whydrive.co.uk' || url.hostname === 'www.whydrive.co.uk';
+    if (isProd && (url.hostname === 'www.whydrive.co.uk' || url.protocol === 'http:')) {
       url.hostname = 'whydrive.co.uk';
+      url.protocol = 'https:';
       return Response.redirect(url.toString(), 301);
     }
     const res = await route(request, env);
