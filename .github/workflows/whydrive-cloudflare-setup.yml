@@ -23,11 +23,6 @@ jobs:
       ZONE_NAME: whydrive.co.uk
       PROJECT: whydrive
     steps:
-      - name: List available secret names (values are never printed)
-        env:
-          ALL: ${{ toJSON(secrets) }}
-        run: printf '%s' "$ALL" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(Object.keys(JSON.parse(s)).sort().join(', ')))"
-
       - name: Resend key and domain check (sends only to Resend's test inbox)
         shell: bash
         run: |
