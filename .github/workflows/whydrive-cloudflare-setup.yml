@@ -23,6 +23,22 @@ jobs:
       ZONE_NAME: whydrive.co.uk
       PROJECT: whydrive
     steps:
+      - name: List available secret names (values are never printed)
+        env:
+          ALL: ${{ toJSON(secrets) }}
+        run: printf '%s' "$ALL" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(Object.keys(JSON.parse(s)).sort().join(', ')))"
+
+      - name: Resend key and domain check (sends only to Resend's test inbox)
+        shell: bash
+        run: |
+          set -uo pipefail
+          r() { curl -sS --max-time 30 -H "Authorization: Bearer $RESEND_API_KEY" -H "Content-Type: application/json" "$@"; }
+          echo "domains:"; r https://api.resend.com/domains | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);if(!j.data){console.log(JSON.stringify(j).slice(0,300));return};for(const d of j.data)console.log(' ',d.name,d.status,d.region,JSON.stringify(d.capabilities||{}),d.id)})"
+          ID=$(r https://api.resend.com/domains | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);const d=(j.data||[]).find(x=>x.name==='whydrive.co.uk');process.stdout.write(d?d.id:'')})")
+          if [ -n "$ID" ]; then r "https://api.resend.com/domains/$ID" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log('status',j.status);for(const x of (j.records||[]))console.log(' ',x.record,x.type,x.name,x.status,String(x.value).slice(0,60),x.priority||'')})"; fi
+          echo "test send to delivered@resend.dev:"
+          r -X POST https://api.resend.com/emails --data '{"from":"WhyDrive <driver@whydrive.co.uk>","to":["delivered@resend.dev"],"subject":"WhyDrive sending test","text":"Sending test from driver@whydrive.co.uk"}' | head -c 300; echo
+
       - name: Probe token permissions (read only)
         shell: bash
         run: |
