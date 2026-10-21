@@ -19,6 +19,7 @@ jobs:
     env:
       CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_TOKEN }}
       CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || secrets.WHYDRIVE_RESEND_API_KEY }}
       ZONE_NAME: whydrive.co.uk
       PROJECT: whydrive
     steps:
@@ -35,4 +36,7 @@ jobs:
           echo "workers scripts read:"; api "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/scripts" | j "console.log(j.success, JSON.stringify(j.errors), (j.result||[]).map(s=>s.id).join(', '))"
           echo "zone settings read:"; api "https://api.cloudflare.com/client/v4/zones/$ZONE/settings/ssl" | j "console.log(j.success, JSON.stringify(j.errors))"
           echo "zone page rules/rulesets read:"; api "https://api.cloudflare.com/client/v4/zones/$ZONE/rulesets" | j "console.log(j.success, JSON.stringify(j.errors))"
+          echo "dns records read:"; api "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records?per_page=100" | j "console.log(j.success, JSON.stringify(j.errors)); for(const r of (j.result||[]))console.log('   ',r.type,r.name,String(r.content).slice(0,60))"
+          echo "email routing settings read:"; api "https://api.cloudflare.com/client/v4/zones/$ZONE/email/routing" | j "console.log(j.success, JSON.stringify(j.errors), j.result&&j.result.enabled)"
+          echo "resend key in repo secrets: $([ -n \"${RESEND_API_KEY:-}\" ] && echo yes || echo no)"
           echo "email routing addresses read:"; api "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/email/routing/addresses" | j "console.log(j.success, JSON.stringify(j.errors))"
