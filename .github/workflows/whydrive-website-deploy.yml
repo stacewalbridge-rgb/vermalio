@@ -71,7 +71,7 @@ jobs:
           set -euo pipefail
           if [ -n "${RESEND_API_KEY:-}" ]; then
             for ENVNAME in production preview; do
-              printf '%s' "$RESEND_API_KEY" | ../node_modules/.bin/wrangler pages secret put RESEND_API_KEY --project-name="${PROJECT_NAME}" --env "$ENVNAME" >/dev/null && echo "RESEND_API_KEY set for $ENVNAME"
+              printf '%s' "$RESEND_API_KEY" | ../node_modules/.bin/wrangler pages secret put RESEND_API_KEY --project-name="${PROJECT_NAME}" --env "$ENVNAME" >/dev/null && echo "RESEND_API_KEY set for $ENVNAME" || echo "Could not set RESEND_API_KEY for $ENVNAME"
             done
           else
             echo "RESEND_API_KEY not available as a repository secret; enquiry email stays disabled."
