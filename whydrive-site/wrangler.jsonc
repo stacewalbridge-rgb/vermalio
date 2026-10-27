@@ -18,8 +18,13 @@
   ],
   "vars": {
     // Shown when the form cannot send. Switch back to driver@whydrive.co.uk once that inbox receives mail.
-    "FALLBACK_EMAIL": "support@vamalio.com"
+    "FALLBACK_EMAIL": "support@vamalio.com",
+    // SHA-256 of the /qr-stats password (the password itself is not stored anywhere in the repo).
+    "QR_STATS_PASSWORD_SHA256": "283e5a9c507dc52cf0ea46254890736a7308e72b1d1f21a75469a578d19789af"
   },
+  // QR scan counts (worker/qr-stats.js). Cloudflare creates the storage on the first deploy.
+  "durable_objects": { "bindings": [{ "name": "QR_STATS", "class_name": "QrStats" }] },
+  "migrations": [{ "tag": "qr-stats-v1", "new_sqlite_classes": ["QrStats"] }],
   "workers_dev": true,
   "observability": { "enabled": true }
 }
