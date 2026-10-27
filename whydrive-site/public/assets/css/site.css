@@ -697,3 +697,25 @@ fieldset:last-of-type { border-bottom: 0; }
 .hero .glass p { color: var(--text-2); }
 .hero .glass p.eyebrow { color: var(--gold-600); }
 .hero .glass h1, .hero .glass h2, .hero .glass h3 { color: var(--navy); }
+
+/* ================= Gold pin-drop motif (from the posters) ================= */
+:root { --pin: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23fff2c2'/%3E%3Cstop offset='.35' stop-color='%23f4c34f'/%3E%3Cstop offset='.75' stop-color='%23d28f16'/%3E%3Cstop offset='1' stop-color='%23a86a0b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M12 1C6 1 1.5 5.6 1.5 11.4c0 7.4 8.6 17.4 9.7 18.6.4.5 1.2.5 1.6 0 1.1-1.2 9.7-11.2 9.7-18.6C22.5 5.6 18 1 12 1z' fill='url(%23g)' stroke='%239c650c' stroke-width='.8'/%3E%3Ccircle cx='12' cy='11.2' r='5.2' fill='%23fff'/%3E%3C/svg%3E"); }
+.eyebrow::before { width: 13px; height: 17px; border-radius: 0; background: var(--pin) center / contain no-repeat; filter: drop-shadow(0 2px 3px rgba(185, 123, 18, .45)); }
+.section-head.center .eyebrow::after { width: 13px; height: 17px; border-radius: 0; background: var(--pin) center / contain no-repeat; filter: drop-shadow(0 2px 3px rgba(185, 123, 18, .45)); }
+.hero-local svg { width: 15px; height: 20px; filter: drop-shadow(0 2px 3px rgba(185, 123, 18, .4)); }
+
+/* Map pins drop in as the route draws */
+.jm-town use { filter: drop-shadow(0 3px 3px rgba(120, 75, 5, .35)); transform-box: fill-box; transform-origin: 50% 100%; animation: pindrop .6s cubic-bezier(.3, 1.6, .5, 1) both; }
+.jm-town:nth-of-type(1) use { animation-delay: .2s; } .jm-town:nth-of-type(2) use { animation-delay: .8s; }
+.jm-town:nth-of-type(3) use { animation-delay: 1.4s; } .jm-town:nth-of-type(4) use { animation-delay: 2.3s; }
+@keyframes pindrop { from { opacity: 0; transform: translateY(-14px) scale(.7); } to { opacity: 1; transform: none; } }
+
+/* Statement band on the pin map */
+.statement { background: linear-gradient(180deg, rgba(255, 250, 238, .78), rgba(255, 244, 215, .86)), url('/assets/img/photos/gold-network-1080.webp') center 40% / cover no-repeat; box-shadow: 0 3px 0 #e2b04a inset, 0 -3px 0 #e2b04a inset; padding: clamp(34px, 5vw, 56px) 0; }
+.statement p { text-shadow: 0 1px 0 rgba(255, 255, 255, .9), 0 0 18px rgba(255, 255, 255, .9); }
+.statement .gold-text { color: transparent; -webkit-text-fill-color: transparent; background: linear-gradient(180deg, #d99a22 0%, #a86a0b 100%); -webkit-background-clip: text; background-clip: text; text-shadow: none; filter: drop-shadow(0 1px 0 rgba(255, 255, 255, .9)); }
+
+/* Navy panels and footer glow with the pin map behind */
+.cta-band { background: linear-gradient(160deg, rgba(19, 41, 106, .88), rgba(7, 20, 54, .94)), url('/assets/img/photos/gold-network-1080.webp') center 30% / cover no-repeat; }
+.site-footer { background: linear-gradient(180deg, rgba(8, 23, 56, .86) 0%, #040c24 55%), url('/assets/img/photos/gold-network-1080.webp') center top / 100% auto no-repeat, #040c24; }
+@media (prefers-reduced-motion: reduce) { .jm-town use { animation: none; } }
