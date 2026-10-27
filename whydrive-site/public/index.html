@@ -26,13 +26,12 @@
 <link rel="icon" href="/assets/img/brand/icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/assets/img/brand/icon-180.png">
 <link rel="manifest" href="/site.webmanifest">
-<link rel="preload" href="/assets/fonts/inter-tight-var.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="/assets/fonts/plex-mono-500.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/montserrat-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/assets/css/site.css?v=20261023b">
+<link rel="stylesheet" href="/assets/css/site.css?v=20261028">
 <script>document.documentElement.classList.remove('no-js')</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://whydrive.co.uk/#org","name":"WhyDrive","url":"https://whydrive.co.uk/","logo":"https://whydrive.co.uk/assets/img/brand/whydrive-logo-720.webp","slogan":"Your Ride Your Way","email":"driver@whydrive.co.uk","parentOrganization":{"@type":"Organization","name":"Vamalio Technologies Ltd","url":"https://vamalio.com","identifier":"17460666"}},{"@type":"WebSite","@id":"https://whydrive.co.uk/#website","url":"https://whydrive.co.uk/","name":"WhyDrive","publisher":{"@id":"https://whydrive.co.uk/#org"},"inLanguage":"en-GB"}]}</script>
-<script src="/assets/js/site.js?v=20261023b" defer></script>
+<script src="/assets/js/site.js?v=20261028" defer></script>
 </head>
 <body>
 
@@ -94,7 +93,7 @@
         <li><a href="/contact/">Contact</a></li>
       </ul>
     </nav>
-    <a class="btn btn-gold btn-sm header-cta" href="/book/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=header" rel="noopener">Book a taxi</a>
+    <a class="btn btn-gold btn-sm header-cta" href="https://book.robs-travel.co.uk/whydrive/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=header" rel="noopener">Book a taxi</a>
     <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="mobile-menu">
       <span>Menu</span>
       <span class="bars" aria-hidden="true"><span></span><span></span></span>
@@ -117,7 +116,7 @@
     </ul>
   </nav>
   <div class="menu-actions">
-    <a class="btn btn-gold btn-block" href="/book/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=mobile-menu" rel="noopener">Book a Local Taxi <svg aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+    <a class="btn btn-gold btn-block" href="https://book.robs-travel.co.uk/whydrive/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=mobile-menu" rel="noopener">Book a Local Taxi <svg aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
     <p>Run a taxi business? <a href="/drivers-operators/">How WhyDrive works for operators</a></p>
   </div>
   <div class="menu-foot">
@@ -127,19 +126,42 @@
   </div>
 </div>
 <main id="main">
-<section class="hero grid-bg" aria-labelledby="hero-title">
-  
+<section class="hero hero-home" aria-labelledby="hero-title">
+  <div class="hero-band" aria-hidden="true">
+    <picture><source type="image/webp" srcset="/assets/img/photos/gold-network-720.webp 720w, /assets/img/photos/gold-network-1080.webp 1080w" sizes="100vw"><img src="/assets/img/photos/gold-network-1080.webp" width="1080" height="180" alt=""></picture>
+    <svg class="ribbons" viewBox="0 0 1440 300" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="rg-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3c9"/><stop offset=".3" stop-color="#f3c556"/><stop offset=".65" stop-color="#d0901a"/><stop offset="1" stop-color="#f1c45c"/></linearGradient>
+        <linearGradient id="rg-silver" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#d4dae4"/><stop offset="1" stop-color="#9aa4b4"/></linearGradient>
+      </defs>
+      <path d="M-40 150 C 180 118, 340 170, 500 300 C 330 205, 170 170, -40 192 Z" fill="url(#rg-gold)"/>
+      <path d="M-40 212 C 160 190, 300 232, 400 300 C 270 252, 140 232, -40 244 Z" fill="url(#rg-silver)"/>
+      <path d="M1480 150 C 1260 118, 1100 170, 940 300 C 1110 205, 1270 170, 1480 192 Z" fill="url(#rg-gold)"/>
+      <path d="M1480 212 C 1280 190, 1140 232, 1040 300 C 1170 252, 1300 232, 1480 244 Z" fill="url(#rg-silver)"/>
+    </svg>
+  </div>
   <div class="container">
    <div class="hero-top">
     <div class="hero-copy">
-      <p class="eyebrow">Independent local taxis, together</p>
+      <div class="hero-logo" aria-hidden="true"><span class="ring"></span><img src="/assets/img/brand/whydrive-logo-alpha-720.webp" width="720" height="472" alt=""></div>
       <h1 class="h-display" id="hero-title"><span class="line">Your local taxi.</span><span class="line gold-text">Just got smarter.</span></h1>
-      <p class="sub">Bringing Local Travel into the 21st Century.</p>
+      <div class="gold-rule" aria-hidden="true"></div>
+      <p class="sub">One app. Many local operators. Book your local taxi in seconds.</p>
       <p class="lead">Why ring around different taxi companies hoping someone can help? WhyDrive brings participating independent local taxi operators together through one smart, easy-to-use booking platform.</p>
       <div class="btn-row">
-        <a class="btn btn-gold" href="/book/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=home-hero" rel="noopener">Book a Local Taxi <svg aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+        <a class="btn btn-gold" href="https://book.robs-travel.co.uk/whydrive/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=home-hero" rel="noopener">Book a Local Taxi <svg aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
         <a class="btn btn-outline-light" href="/drivers-operators/">I'm a Taxi Operator <svg aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
       </div>
+      <div class="store-row">
+        <a class="store-badge" href="https://play.google.com/store/apps/details?id=uk.co.robstravel.taxis.app" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 2.8l10.6 9.2L4 21.2c-.4-.2-.6-.6-.6-1.1V3.9c0-.5.2-.9.6-1.1z" fill="#34a853"/><path d="M14.6 12l3.2 2.8-11.9 6.6c-.6.3-1.3.2-1.9-.2z" fill="#ea4335"/><path d="M14.6 12L4 2.8c.6-.4 1.3-.5 1.9-.2l11.9 6.6z" fill="#4285f4"/><path d="M17.8 9.2l3 1.7c.9.5.9 1.7 0 2.2l-3 1.7-3.2-2.8z" fill="#fbbc04"/></svg><span><small>Get it on</small>Google Play</span></a>
+        <span class="store-note">iPhone app coming soon &middot; or book online</span>
+      </div>
+      <ul class="badge-row" aria-label="Why WhyDrive">
+        <li><span class="gold-badge"><svg aria-hidden="true"><use href="#i-zap"/></svg></span>Quick booking</li>
+        <li><span class="gold-badge"><svg aria-hidden="true"><use href="#i-users"/></svg></span>Local operators</li>
+        <li><span class="gold-badge"><svg aria-hidden="true"><use href="#i-pound"/></svg></span>Clear fares</li>
+        <li><span class="gold-badge"><svg aria-hidden="true"><use href="#i-shield"/></svg></span>Safe &amp; trusted</li>
+      </ul>
       <p class="hero-local"><svg aria-hidden="true"><use href="#i-pin"/></svg>Starting in Bude &amp; North Cornwall, growing area by area.</p>
     </div>
     <figure class="journey" aria-label="Example journey from Bude to Exeter Airport: 62.6 miles, about 1 hour 22 minutes, £150 fixed fare">
@@ -224,14 +246,14 @@
   </div>
 </section>
 
-<section class="section section-dark grid-bg" aria-labelledby="why-title">
+<section class="section section-white" aria-labelledby="why-title">
   <div class="container">
     <div class="split wide-right">
       <div class="reveal">
         <p class="eyebrow">The problem we solve</p>
         <h2 class="h2" id="why-title">Stop ringing round. <span class="gold-text">Start booking.</span></h2>
         <p class="lead">Finding a local taxi often means calling one company after another, hoping somebody has a car free. WhyDrive puts participating independent operators behind one simple request.</p>
-        <p style="color:var(--text-on-dark)">Customers can request journeys, view fare estimates, see their routes, receive booking updates and communicate with their assigned driver &mdash; all through WhyDrive.</p>
+        <p>Customers can request journeys, view fare estimates, see their routes, receive booking updates and communicate with their assigned driver &mdash; all through WhyDrive.</p>
         <p class="note">WhyDrive is a shared technology platform, not a replacement for independent local taxi businesses. Your journey is provided by a participating licensed operator.</p>
       </div>
       <div class="compare reveal">
@@ -290,7 +312,7 @@
       </article>
     </div>
     <div class="btn-row mt-3 reveal">
-      <a class="btn btn-gold" href="/book/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=home-steps" rel="noopener">Book a Local Taxi <svg aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+      <a class="btn btn-gold" href="https://book.robs-travel.co.uk/whydrive/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=home-steps" rel="noopener">Book a Local Taxi <svg aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
       <a class="btn btn-outline-light" href="/how-it-works/">How WhyDrive works <svg aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
     </div>
   </div>
@@ -329,13 +351,13 @@
           <li>Taxi operators: download it for cards, posters and vehicle windows</li>
         </ul>
         <div class="btn-row mt-2">
-          <a class="btn btn-gold" href="/book/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=home-scan" rel="noopener">Open the booking app <svg aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+          <a class="btn btn-gold" href="https://book.robs-travel.co.uk/whydrive/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=home-scan" rel="noopener">Open the booking app <svg aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
           <a class="btn btn-outline-light" href="/assets/img/qr/whydrive-book-qr.png" download="WhyDrive-booking-QR.png">Download QR code</a>
         </div>
       </div>
       <div class="qr-stage reveal">
         <div class="qr-frame">
-          <img src="/assets/img/qr/whydrive-book-qr-480.webp" width="480" height="480" alt="QR code that opens the WhyDrive booking app at whydrive.co.uk/book" loading="lazy">
+          <img src="/assets/img/qr/whydrive-book-qr-480.webp" width="480" height="480" alt="QR code that opens the WhyDrive booking app at book.robs-travel.co.uk/whydrive" loading="lazy">
         </div>
         <p class="qr-cap">Scan to book a local taxi</p>
       </div>
@@ -382,7 +404,7 @@
       <h2 class="h2 white" id="local-title">Local roots. <span class="gold-text">Smarter journeys.</span></h2>
       <p class="lead">WhyDrive started in Bude, built around how local taxis really work in rural and coastal communities &mdash; and it's growing area by area as more independent operators join.</p>
       <div class="btn-row mt-2">
-        <a class="btn btn-gold" href="/book/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=home-local" rel="noopener">Book a Local Taxi <svg aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+        <a class="btn btn-gold" href="https://book.robs-travel.co.uk/whydrive/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=home-local" rel="noopener">Book a Local Taxi <svg aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
       </div>
     </div>
   </div>
@@ -396,12 +418,13 @@
       <p class="eyebrow">For taxi operators</p>
       <h2 class="h2 caps" id="ops-title">Your taxi business. Your customers. <span class="gold-text">Our smart technology.</span></h2>
       <p class="lead">Join a growing network of independent operators. Keep your business, your brand and your licences &mdash; and gain access to extra booking opportunities through WhyDrive.</p>
-      <div class="pill-row mt-2 mb-2">
+      <div class="pill-row mt-2">
         <span class="pill"><svg aria-hidden="true"><use href="#i-check"/></svg>Stay independent</span>
         <span class="pill"><svg aria-hidden="true"><use href="#i-check"/></svg>Fair, automated allocation</span>
         <span class="pill"><svg aria-hidden="true"><use href="#i-check"/></svg>Less empty mileage</span>
         <span class="pill"><svg aria-hidden="true"><use href="#i-check"/></svg>£39 per vehicle per week early adoption rate</span>
       </div>
+      <p class="fine-print mb-2">£39 per vehicle per week is fixed for 3 months. 7 days&rsquo; cancellation required.</p>
       <div class="btn-row">
         <a class="btn btn-gold" href="/join/">Join WhyDrive <svg aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
         <a class="btn btn-outline-light" href="/drivers-operators/">Drivers &amp; Operators</a>
@@ -421,7 +444,7 @@
       <div>
         <h2>Passengers</h2>
         <ul>
-          <li><a href="/book/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=footer" rel="noopener">Book a local taxi</a></li>
+          <li><a href="https://book.robs-travel.co.uk/whydrive/?utm_source=whydrive.co.uk&amp;utm_medium=website&amp;utm_campaign=footer" rel="noopener">Book a local taxi</a></li>
           <li><a href="/how-it-works/">How WhyDrive works</a></li>
           <li><a href="/help/">Help &amp; Support</a></li>
           <li><a href="/contact/">Contact</a></li>
