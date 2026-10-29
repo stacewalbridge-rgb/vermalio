@@ -67,6 +67,23 @@ function goRedirect(url) {
   return new Response(null, { status: 302, headers: { Location: `${url.origin}${dest}?qr=${code}`, 'Cache-Control': 'no-store' } });
 }
 
+// whydrive.co.uk/go: one link for printed QR codes. Android phones open the WhyDrive customer
+// app on Google Play; iPhones, computers and everything else open the web booking app.
+// Printed flyers that point at whydrive.co.uk/book (no slash, no query) behave the same way.
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=uk.co.robstravel.taxis.app';
+const isAndroid = request => /android/i.test(request.headers.get('User-Agent') || '');
+
+function deviceRedirect(request, env, ctx, url, tag) {
+  const counted = new URL(url);
+  counted.searchParams.set('qr', tag);
+  if (isAndroid(request)) {
+    track(request, env, ctx, counted, 'play');
+    const referrer = encodeURIComponent(`utm_source=qr&utm_medium=print&utm_campaign=${tag}`);
+    return new Response(null, { status: 302, headers: { Location: `${PLAY_STORE_URL}&referrer=${referrer}`, 'Cache-Control': 'no-store', Vary: 'User-Agent' } });
+  }
+  return new Response(null, { status: 302, headers: { Location: `${url.origin}${BOOK_PREFIX}?qr=${tag}`, 'Cache-Control': 'no-store', Vary: 'User-Agent' } });
+}
+
 // Count a QR scan once, on the request that finally answers it (not on the redirects before it).
 function track(request, env, ctx, url, page) {
   const code = qrCode(url);
@@ -120,6 +137,9 @@ async function route(request, env, ctx) {
   const url = new URL(request.url);
   if (url.pathname === '/qr-stats' || url.pathname === '/qr-stats/') return statsPage(request, env);
   if (url.pathname === '/join/') track(request, env, ctx, url, 'join');
+  if (url.pathname === '/go' || url.pathname === '/go/') return deviceRedirect(request, env, ctx, url, 'go');
+  // Website links all use /book/?utm_..., so a bare /book on Android is a printed flyer QR scan.
+  if (url.pathname === '/book' && !url.search && request.method === 'GET' && isAndroid(request)) return deviceRedirect(request, env, ctx, url, 'flyer');
   if (url.pathname === '/book' || url.pathname.startsWith(BOOK_PREFIX)) {
     if (!(await bookingReady(env))) {
       track(request, env, ctx, url, 'book');
