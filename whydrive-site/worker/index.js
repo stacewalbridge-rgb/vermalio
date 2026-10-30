@@ -1,3 +1,4 @@
+import PostalMime from 'postal-mime';
 // Cloudflare Worker entry for whydrive.co.uk: serves the static site (ASSETS binding),
 // the same API handlers used by the Pages Functions in ../functions, the customer booking
 // web app at /book/ (proxied from the booking site), QR scan tracking (?qr=<code>, report at /qr-stats)
@@ -186,5 +187,19 @@ export default {
     }
     if (url.hostname.endsWith('.workers.dev') || url.hostname.endsWith('.pages.dev')) out.headers.set('X-Robots-Tag', 'noindex, nofollow');
     return out;
+  },
+  // driver@whydrive.co.uk: always forward to the owner's inbox as before, then pass a copy to
+  // WhyDrive (book.whydrive.co.uk) which files documents and answers questions automatically.
+  async email(message, env, ctx) {
+    if (env.FORWARD_TO) await message.forward(env.FORWARD_TO).catch(() => {});
+    if (!env.WHYDRIVE_INBOUND_SECRET) return;
+    const raw = await new Response(message.raw).arrayBuffer();
+    const mail = await PostalMime.parse(raw).catch(() => null);
+    if (!mail) return;
+    const auth = String(message.headers.get('authentication-results') || message.headers.get('arc-authentication-results') || '');
+    const b64 = buf => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 32768) s += String.fromCharCode(...u.subarray(i, i + 32768)); return btoa(s); };
+    const body = { from: message.from, name: mail.from?.name || '', subject: mail.subject || '', text: String(mail.text || '').slice(0, 5000), authOk: /dkim=pass|spf=pass/i.test(auth),
+      attachments: (mail.attachments || []).slice(0, 10).map(a => ({ filename: a.filename || '', type: String(a.mimeType || '').toLowerCase(), data: b64(a.content) })) };
+    ctx.waitUntil(fetch('https://book.whydrive.co.uk/api/whydrive-inbound', { method: 'POST', headers: { 'content-type': 'application/json', 'x-whydrive-inbound': env.WHYDRIVE_INBOUND_SECRET }, body: JSON.stringify(body) }).catch(() => {}));
   },
 };

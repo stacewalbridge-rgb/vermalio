@@ -54,7 +54,7 @@ jobs:
           echo "Resend key available to workflow: $([ -n "${RESEND_API_KEY:-}" ] && echo yes || echo no)"
 
       - name: Install Wrangler
-        run: npm install --no-save --no-audit --no-fund wrangler@4
+        run: npm install --no-save --no-audit --no-fund wrangler@4 postal-mime@2
 
       - name: Deploy to Cloudflare Pages
         working-directory: whydrive-site

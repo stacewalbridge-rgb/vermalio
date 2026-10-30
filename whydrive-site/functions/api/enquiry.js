@@ -286,6 +286,8 @@ Add them here (photos taken on your phone are fine): ${link}
 
 Your first month with WhyDrive is free. After that it's £39 a week, fixed for your first 3 months. No contract.
 
+If you have any questions please reply below and we will get back to you as soon as possible.
+
 WhyDrive — Your Ride Your Way
 driver@whydrive.co.uk · https://whydrive.co.uk`;
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#0b1830"><div style="max-width:600px;margin:0 auto;padding:24px">${emailHeader()}<div style="background:#fff;border:1px solid #d9e1ec;border-top:0;border-bottom:0;padding:8px 24px 24px">
@@ -297,6 +299,7 @@ driver@whydrive.co.uk · https://whydrive.co.uk`;
 <p style="color:#5b6579;font-size:13px">If the button does not work, copy this link into your browser:<br><a href="${esc(link)}" style="color:#0b2a6b;word-break:break-all">${esc(link)}</a></p>
 <p style="font-size:16px;line-height:1.55">Photos taken on your phone are fine. We check everything automatically and email you your start date as soon as it's all in order.</p>
 <p style="font-size:16px;line-height:1.55"><strong>Your first month is free.</strong> After that it's £39 a week, fixed for your first 3 months. No contract.</p>
+<p style="font-size:16px;line-height:1.55">If you have any questions please reply below and we will get back to you as soon as possible.</p>
 <p style="font-size:15px;margin-top:24px">Kind regards,<br><strong>The WhyDrive team</strong><br><span style="color:#b77a17">Your Ride. Your Way.</span></p>
 </div>${emailFooter()}</div></body></html>`;
   return { subject, html, text };
