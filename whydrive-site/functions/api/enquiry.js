@@ -270,23 +270,33 @@ function emailFooter() {
 }
 
 function buildAck(v, ref) {
-  const subject = `We've received your WhyDrive enquiry (${ref})`;
+  // Drivers finish on the WhyDrive driver form, which checks their documents automatically.
+  const veh = v.vehicles[0] || {};
+  const link = 'https://book.whydrive.co.uk/whydrive/join/?' + new URLSearchParams({ ref, name: v.contactName || '', email: v.email || '', phone: v.phone || '', town: v.area || '', company: v.companyName || '', registration: veh.registration || '' }).toString();
+  const need = ['Your driving licence', 'Your insurance certificate (hire and reward)', 'Your hackney carriage or private hire badge', 'School contract (blue) badge: yes or no? If yes, a photo of it and its expiry date', 'Your MOT certificate and MOT expiry date', 'Your interim test due date (if your council needs one)', 'A head-and-shoulders photo of you, taken on your phone', 'The date you would like to start'];
+  const subject = `WhyDrive: next step for your application (${ref})`;
   const text = `Hello ${v.contactName},
 
-Thank you for your interest in joining WhyDrive. We've received your enquiry for ${v.companyName} (${v.vehicles.length} vehicle${v.vehicles.length === 1 ? '' : 's'}).
+Thank you for applying to drive with WhyDrive. Your reference is ${ref}.
 
-Your reference is ${ref}. A member of the WhyDrive team will review it and contact you about next steps. No payment is taken at this stage.
+To set you up, please send us:
+${need.map(n => '- ' + n).join('\n')}
 
-If you need to add anything, simply reply to this email.
+Add them here (photos taken on your phone are fine): ${link}
+
+Your first month with WhyDrive is free. After that it's £39 a week, fixed for your first 3 months. No contract.
 
 WhyDrive — Your Ride Your Way
-driver@whydrive.co.uk · https://whydrive.co.uk
-Powered by Vamalio Technologies Ltd.`;
+driver@whydrive.co.uk · https://whydrive.co.uk`;
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#0b1830"><div style="max-width:600px;margin:0 auto;padding:24px">${emailHeader()}<div style="background:#fff;border:1px solid #d9e1ec;border-top:0;border-bottom:0;padding:8px 24px 24px">
 <p style="font-size:16px">Hello ${esc(v.contactName)},</p>
-<p style="font-size:16px;line-height:1.55">Thank you for your interest in joining <strong>WhyDrive</strong>. We've received your enquiry for <strong>${esc(v.companyName)}</strong> (${v.vehicles.length} vehicle${v.vehicles.length === 1 ? '' : 's'}).</p>
-<p style="font-size:16px">Your reference is <strong style="font-family:monospace">${esc(ref)}</strong>.</p>
-<p style="font-size:16px;line-height:1.55">A member of the WhyDrive team will review it and contact you about next steps. No payment is taken at this stage. If you need to add anything, simply reply to this email.</p>
+<p style="font-size:16px;line-height:1.55">Thank you for applying to drive with <strong>WhyDrive</strong>. Your reference is <strong style="font-family:monospace">${esc(ref)}</strong>.</p>
+<p style="font-size:16px;line-height:1.55">To set you up, please send us:</p>
+<ul style="font-size:16px;line-height:1.6">${need.map(n => `<li>${esc(n)}</li>`).join('')}</ul>
+<p style="margin:24px 0"><a href="${esc(link)}" style="background:#c99412;color:#111;text-decoration:none;font-weight:bold;font-size:17px;padding:15px 30px;border-radius:10px;display:inline-block">Send my documents</a></p>
+<p style="color:#5b6579;font-size:13px">If the button does not work, copy this link into your browser:<br><a href="${esc(link)}" style="color:#0b2a6b;word-break:break-all">${esc(link)}</a></p>
+<p style="font-size:16px;line-height:1.55">Photos taken on your phone are fine. We check everything automatically and email you your start date as soon as it's all in order.</p>
+<p style="font-size:16px;line-height:1.55"><strong>Your first month is free.</strong> After that it's £39 a week, fixed for your first 3 months. No contract.</p>
 <p style="font-size:15px;margin-top:24px">Kind regards,<br><strong>The WhyDrive team</strong><br><span style="color:#b77a17">Your Ride. Your Way.</span></p>
 </div>${emailFooter()}</div></body></html>`;
   return { subject, html, text };
