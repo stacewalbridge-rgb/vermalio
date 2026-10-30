@@ -273,13 +273,13 @@ function buildAck(v, ref) {
   // Drivers finish on the WhyDrive driver form, which checks their documents automatically.
   const veh = v.vehicles[0] || {};
   const link = 'https://book.whydrive.co.uk/whydrive/join/?' + new URLSearchParams({ ref, name: v.contactName || '', email: v.email || '', phone: v.phone || '', town: v.area || '', company: v.companyName || '', registration: veh.registration || '' }).toString();
-  const need = ['Your driving licence', 'Your insurance certificate (hire and reward)', 'Your hackney carriage or private hire badge', 'School contract (blue) badge: yes or no? If yes, a photo of it and its expiry date', 'Your MOT certificate and MOT expiry date', 'Your interim test due date (if your council needs one)', 'A head-and-shoulders photo of you, taken on your phone', 'The date you would like to start'];
+  const need = ['Taxi badge', 'Insurance certificate for the licensed vehicle you will be driving, for hire or reward', 'School contract badge, if applicable', 'Driving licence', 'Vehicle plate', 'MOT expiry date, and interim due date (if your council needs one)', "A head-and-shoulders photo taken on your phone, and the date you'd like to start with WhyDrive"];
   const subject = `WhyDrive: next step for your application (${ref})`;
   const text = `Hello ${v.contactName},
 
 Thank you for applying to drive with WhyDrive. Your reference is ${ref}.
 
-To set you up, please send us:
+What's next: to complete your onboarding with WhyDrive you'll need to send us the following. Just reply to this email with them attached, or use the link below. Photos are fine as long as they are readable.
 ${need.map(n => '- ' + n).join('\n')}
 
 Add them here (photos taken on your phone are fine): ${link}
@@ -293,8 +293,9 @@ driver@whydrive.co.uk · https://whydrive.co.uk`;
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#0b1830"><div style="max-width:600px;margin:0 auto;padding:24px">${emailHeader()}<div style="background:#fff;border:1px solid #d9e1ec;border-top:0;border-bottom:0;padding:8px 24px 24px">
 <p style="font-size:16px">Hello ${esc(v.contactName)},</p>
 <p style="font-size:16px;line-height:1.55">Thank you for applying to drive with <strong>WhyDrive</strong>. Your reference is <strong style="font-family:monospace">${esc(ref)}</strong>.</p>
-<p style="font-size:16px;line-height:1.55">To set you up, please send us:</p>
-<ul style="font-size:16px;line-height:1.6">${need.map(n => `<li>${esc(n)}</li>`).join('')}</ul>
+<p style="font-size:16px;line-height:1.55"><strong>What's next</strong></p><p style="font-size:16px;line-height:1.55">To complete your onboarding with WhyDrive you'll need to send us the following:</p>
+<ol style="font-size:16px;line-height:1.7">${need.map(n => `<li>${esc(n)}</li>`).join('')}</ol>
+<p style="font-size:16px;line-height:1.55">Just reply to this email with them attached, or tap the button. Photos of these documents are fine as long as they are readable.</p>
 <p style="margin:24px 0"><a href="${esc(link)}" style="background:#c99412;color:#111;text-decoration:none;font-weight:bold;font-size:17px;padding:15px 30px;border-radius:10px;display:inline-block">Send my documents</a></p>
 <p style="color:#5b6579;font-size:13px">If the button does not work, copy this link into your browser:<br><a href="${esc(link)}" style="color:#0b2a6b;word-break:break-all">${esc(link)}</a></p>
 <p style="font-size:16px;line-height:1.55">Photos taken on your phone are fine. We check everything automatically and email you your start date as soon as it's all in order.</p>
